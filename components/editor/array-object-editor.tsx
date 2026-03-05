@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import yaml from "js-yaml";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { DisabledArrayItem } from "@/lib/traefik";
@@ -38,12 +38,23 @@ function toYamlFragment(value: unknown) {
 
 type EditTarget = { kind: "enabled"; index: number } | { kind: "disabled"; id: string } | null;
 type ArrayRow = {
-  key: string;
+  id: string;
   item: Record<string, unknown>;
   disabled: boolean;
   index?: number;
-  id?: string;
 };
+
+function createArrayItemId(): string {
+  return `array_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
 
 export function ArrayObjectEditor({
   title,
@@ -61,23 +72,68 @@ export function ArrayObjectEditor({
   const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [fragment, setFragment] = useState("");
   const [error, setError] = useState("");
+  const enabledItemIdsRef = useRef(new WeakMap<Record<string, unknown>, string>());
 
-  const rows = useMemo<ArrayRow[]>(
-    () => [
-      ...items.map((item, index) => ({
-        key: `enabled-${index}`,
+  const rowsSnapshot = useMemo(() => {
+    const getEnabledItemId = (item: Record<string, unknown>) => {
+      const existing = enabledItemIdsRef.current.get(item);
+      if (existing) return existing;
+      const generated = createArrayItemId();
+      enabledItemIdsRef.current.set(item, generated);
+      return generated;
+    };
+
+    const rowsById = new Map<string, ArrayRow>();
+    const naturalOrder: string[] = [];
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      const id = getEnabledItemId(item);
+      rowsById.set(id, {
+        id,
         item,
         index,
         disabled: false
-      })),
-      ...disabledItems.map((item) => ({
-        key: `disabled-${item.id}`,
-        item: item.value,
+      });
+      naturalOrder.push(id);
+    }
+
+    for (const item of disabledItems) {
+      enabledItemIdsRef.current.set(item.value, item.id);
+      rowsById.set(item.id, {
         id: item.id,
+        item: item.value,
         disabled: true
-      }))
-    ],
-    [items, disabledItems]
+      });
+      if (!naturalOrder.includes(item.id)) {
+        naturalOrder.push(item.id);
+      }
+    }
+
+    return { rowsById, naturalOrder };
+  }, [items, disabledItems]);
+
+  const [rowOrder, setRowOrder] = useState<string[]>(() => rowsSnapshot.naturalOrder);
+
+  useEffect(() => {
+    setRowOrder((current) => {
+      const naturalSet = new Set(rowsSnapshot.naturalOrder);
+      const next = current.filter((key) => naturalSet.has(key));
+      for (const key of rowsSnapshot.naturalOrder) {
+        if (!next.includes(key)) {
+          next.push(key);
+        }
+      }
+      return arraysEqual(current, next) ? current : next;
+    });
+  }, [rowsSnapshot]);
+
+  const rows = useMemo(
+    () =>
+      rowOrder
+        .map((key) => rowsSnapshot.rowsById.get(key))
+        .filter((row): row is ArrayRow => Boolean(row)),
+    [rowOrder, rowsSnapshot]
   );
 
   const openAdd = () => {
@@ -155,7 +211,7 @@ export function ArrayObjectEditor({
         ) : (
           rows.map((row) => (
             <div
-              key={row.key}
+              key={row.id}
               className="rounded-lg border bg-card/70 p-3"
             >
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -175,11 +231,9 @@ export function ArrayObjectEditor({
                       checked={!row.disabled}
                       onCheckedChange={(checked) =>
                         row.disabled
-                          ? row.id
-                            ? onToggleItem({ id: row.id }, checked)
-                            : null
+                          ? onToggleItem({ id: row.id }, checked)
                           : row.index != null
-                            ? onToggleItem({ index: row.index }, checked)
+                            ? onToggleItem({ index: row.index, id: row.id }, checked)
                             : null
                       }
                       aria-label={`${row.disabled ? "Enable" : "Disable"} ${itemLabel.toLowerCase()} ${
@@ -192,7 +246,7 @@ export function ArrayObjectEditor({
                     size="sm"
                     className="w-[78px]"
                     onClick={() =>
-                      row.disabled && row.id ? openEditDisabled(row.id) : row.index != null ? openEditEnabled(row.index) : null
+                      row.disabled ? openEditDisabled(row.id) : row.index != null ? openEditEnabled(row.index) : null
                     }
                   >
                     <Pencil className="mr-1 h-4 w-4" /> Edit
@@ -203,9 +257,7 @@ export function ArrayObjectEditor({
                     className="w-[78px]"
                     onClick={() =>
                       row.disabled
-                        ? row.id
-                          ? onDeleteDisabledItem(row.id)
-                          : null
+                        ? onDeleteDisabledItem(row.id)
                         : row.index != null
                           ? remove(row.index)
                           : null

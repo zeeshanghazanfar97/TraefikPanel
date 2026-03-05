@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import yaml from "js-yaml";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import type { NamedRecord } from "@/lib/traefik";
@@ -49,6 +49,14 @@ function summarizeConfig(name: string, item: Record<string, unknown>) {
   return `${name} (${Object.keys(item).length} field${Object.keys(item).length === 1 ? "" : "s"})`;
 }
 
+function arraysEqual(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
 export function MapObjectEditor({
   title,
   description,
@@ -68,26 +76,49 @@ export function MapObjectEditor({
   const [name, setName] = useState("");
   const [fragment, setFragment] = useState("");
   const [error, setError] = useState("");
+  const [rowOrder, setRowOrder] = useState<string[]>(() => [
+    ...Object.keys(entries),
+    ...Object.keys(disabledEntries)
+  ]);
 
-  const rows = useMemo(() => {
-    const enabledRows = Object.entries(entries)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([entryName, value]) => ({
-        entryName,
-        value: value as Record<string, unknown>,
-        disabled: false
-      }));
+  useEffect(() => {
+    const naturalOrder = [...Object.keys(entries), ...Object.keys(disabledEntries)];
+    const naturalSet = new Set(naturalOrder);
 
-    const disabledRows = Object.entries(disabledEntries)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([entryName, value]) => ({
-        entryName,
-        value: value as Record<string, unknown>,
-        disabled: true
-      }));
-
-    return [...enabledRows, ...disabledRows];
+    setRowOrder((current) => {
+      const next = current.filter((key) => naturalSet.has(key));
+      for (const key of naturalOrder) {
+        if (!next.includes(key)) {
+          next.push(key);
+        }
+      }
+      return arraysEqual(current, next) ? current : next;
+    });
   }, [entries, disabledEntries]);
+
+  const rows = useMemo(
+    () =>
+      rowOrder
+        .map((entryName) => {
+          if (entries[entryName]) {
+            return {
+              entryName,
+              value: entries[entryName] as Record<string, unknown>,
+              disabled: false
+            };
+          }
+          if (disabledEntries[entryName]) {
+            return {
+              entryName,
+              value: disabledEntries[entryName] as Record<string, unknown>,
+              disabled: true
+            };
+          }
+          return null;
+        })
+        .filter((row): row is { entryName: string; value: Record<string, unknown>; disabled: boolean } => Boolean(row)),
+    [rowOrder, entries, disabledEntries]
+  );
 
   const openAddDialog = () => {
     setMode("add");

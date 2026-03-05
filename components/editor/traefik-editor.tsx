@@ -466,7 +466,7 @@ export function TraefikEditor({
     if (!target) return;
     const nextEnabled = enabledItems.filter((_, idx) => idx !== payload.index);
     updateArray(path, nextEnabled);
-    setDisabledArrayByPath(path, [...disabledItems, { id: createDisabledArrayId(), value: target }]);
+    setDisabledArrayByPath(path, [...disabledItems, { id: payload.id ?? createDisabledArrayId(), value: target }]);
   };
 
   const deleteDisabledArrayEntry = (path: readonly string[], id: string) => {
