@@ -24,3 +24,7 @@ services:
     volumes:
       - ${DYNAMIC_CONFIG_PATH:-./dynamic.yml}:/data/dynamic.yml
     restart: unless-stopped
+
+networks:
+  traefik-public:
+    external: true
