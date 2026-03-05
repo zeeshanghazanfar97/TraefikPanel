@@ -48,6 +48,7 @@ Behavior:
 - Full YAML fragment editing per object, so any Traefik field is supported.
 - Raw full-file YAML tab.
 - API-backed load/save to configurable `DYNAMIC_CONFIG_PATH`.
+- Save confirmation dialog with YAML diff preview.
 - Live YAML preview and download.
 - Dark mode toggle with persisted theme preference.
 

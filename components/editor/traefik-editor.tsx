@@ -47,6 +47,117 @@ function countEntries(config: TraefikDynamicConfig) {
   }, 0);
 }
 
+const MAX_RENDERED_DIFF_LINES = 600;
+
+type SaveDiffPreview = {
+  text: string;
+  additions: number;
+  removals: number;
+  changed: boolean;
+  truncated: boolean;
+};
+
+const MAX_CONFIRM_TEXT_CHARS = 15000;
+
+type DiffEntry = {
+  type: "add" | "remove";
+  line: string;
+  oldLine?: number;
+  newLine?: number;
+};
+
+function splitYamlLines(input: string): string[] {
+  const normalized = input.replace(/\r\n/g, "\n");
+  if (!normalized) {
+    return [];
+  }
+  return normalized.endsWith("\n") ? normalized.slice(0, -1).split("\n") : normalized.split("\n");
+}
+
+function computeLineDiff(before: string[], after: string[]): DiffEntry[] {
+  const n = before.length;
+  const m = after.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => Array<number>(m + 1).fill(0));
+
+  for (let i = n - 1; i >= 0; i -= 1) {
+    for (let j = m - 1; j >= 0; j -= 1) {
+      if (before[i] === after[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const entries: DiffEntry[] = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < n && j < m) {
+    if (before[i] === after[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    if (dp[i + 1][j] >= dp[i][j + 1]) {
+      entries.push({ type: "remove", line: before[i], oldLine: i + 1 });
+      i += 1;
+    } else {
+      entries.push({ type: "add", line: after[j], newLine: j + 1 });
+      j += 1;
+    }
+  }
+
+  while (i < n) {
+    entries.push({ type: "remove", line: before[i], oldLine: i + 1 });
+    i += 1;
+  }
+
+  while (j < m) {
+    entries.push({ type: "add", line: after[j], newLine: j + 1 });
+    j += 1;
+  }
+
+  return entries;
+}
+
+function buildSaveDiffPreview(currentContent: string, nextContent: string): SaveDiffPreview {
+  if (currentContent === nextContent) {
+    return {
+      text: "No textual changes detected. Save will keep the file unchanged.",
+      additions: 0,
+      removals: 0,
+      changed: false,
+      truncated: false
+    };
+  }
+
+  const diffEntries = computeLineDiff(splitYamlLines(currentContent), splitYamlLines(nextContent));
+  const additions = diffEntries.filter((entry) => entry.type === "add").length;
+  const removals = diffEntries.length - additions;
+
+  const rendered = diffEntries.slice(0, MAX_RENDERED_DIFF_LINES).map((entry) => {
+    if (entry.type === "add") {
+      return `+ [new ${entry.newLine}] ${entry.line}`;
+    }
+    return `- [old ${entry.oldLine}] ${entry.line}`;
+  });
+
+  const truncated = diffEntries.length > MAX_RENDERED_DIFF_LINES;
+  if (truncated) {
+    rendered.push(`... ${diffEntries.length - MAX_RENDERED_DIFF_LINES} more changed line(s) not shown`);
+  }
+
+  return {
+    text: rendered.join("\n"),
+    additions,
+    removals,
+    changed: true,
+    truncated
+  };
+}
+
 type TraefikEditorProps = {
   initialConfig: TraefikDynamicConfig;
   configPath: string;
@@ -60,6 +171,7 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
   const [rawYaml, setRawYaml] = useState<string>("");
   const [rawDirty, setRawDirty] = useState(false);
   const [rawError, setRawError] = useState("");
+  const [isPreparingSave, setIsPreparingSave] = useState(false);
 
   const yamlText = useMemo(() => toDynamicYaml(config), [config]);
   const totalEntries = useMemo(() => countEntries(config), [config]);
@@ -80,28 +192,31 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
     setSaveState("idle");
   };
 
+  const fetchLatestConfigContent = async () => {
+    const response = await fetch(`/api/config?ts=${Date.now()}`, {
+      method: "GET",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      let errorMessage = "Failed to load dynamic config file.";
+      try {
+        const body = (await response.json()) as { error?: string };
+        if (body.error) {
+          errorMessage = body.error;
+        }
+      } catch {
+        // Keep fallback message.
+      }
+      throw new Error(errorMessage);
+    }
+    return (await response.json()) as { content: string; path: string };
+  };
+
   const reloadFromDisk = async () => {
     setMessage("");
     setRawError("");
     try {
-      const response = await fetch(`/api/config?ts=${Date.now()}`, {
-        method: "GET",
-        cache: "no-store"
-      });
-      if (!response.ok) {
-        let errorMessage = "Failed to load dynamic config file.";
-        try {
-          const body = (await response.json()) as { error?: string };
-          if (body.error) {
-            errorMessage = body.error;
-          }
-        } catch {
-          // Keep fallback message.
-        }
-        throw new Error(errorMessage);
-      }
-
-      const data = (await response.json()) as { content: string; path: string };
+      const data = await fetchLatestConfigContent();
       const parsed = data.content?.trim().length ? parseDynamicYaml(data.content) : {};
       const shaped = ensureConfigShape(parsed);
       setConfig(shaped);
@@ -115,7 +230,35 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
     }
   };
 
-  const saveToDisk = async () => {
+  const prepareSaveConfirmation = async () => {
+    setMessage("");
+    setRawError("");
+    setIsPreparingSave(true);
+
+    try {
+      const data = await fetchLatestConfigContent();
+      const diffPreview = buildSaveDiffPreview(data.content ?? "", yamlText);
+      const header = `Save changes to ${configPath}?\\n+${diffPreview.additions} additions, -${diffPreview.removals} removals`;
+      const bodyText =
+        diffPreview.text.length > MAX_CONFIRM_TEXT_CHARS
+          ? `${diffPreview.text.slice(0, MAX_CONFIRM_TEXT_CHARS)}\\n... diff preview truncated`
+          : diffPreview.text;
+      const confirmed = window.confirm(`${header}\\n\\n${bodyText}`);
+      if (!confirmed) {
+        setSaveState("idle");
+        setMessage("Save cancelled.");
+        return;
+      }
+      await confirmAndSave();
+    } catch (error) {
+      setSaveState("error");
+      setMessage(error instanceof Error ? error.message : "Unable to prepare save preview.");
+    } finally {
+      setIsPreparingSave(false);
+    }
+  };
+
+  const confirmAndSave = async () => {
     setSaveState("saving");
     setMessage("");
 
@@ -197,8 +340,9 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
             <Button variant="outline" onClick={reloadFromDisk}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reload
             </Button>
-            <Button onClick={saveToDisk} disabled={saveState === "saving"}>
-              <Save className="mr-2 h-4 w-4" /> {saveState === "saving" ? "Saving..." : "Save"}
+            <Button onClick={prepareSaveConfirmation} disabled={saveState === "saving" || isPreparingSave}>
+              <Save className="mr-2 h-4 w-4" />{" "}
+              {isPreparingSave ? "Preparing..." : saveState === "saving" ? "Saving..." : "Save"}
             </Button>
             <Button variant="secondary" onClick={downloadYaml}>
               <Download className="mr-2 h-4 w-4" /> Download
