@@ -15,7 +15,7 @@ async function readInitialConfig(configPath: string) {
 
 export default async function HomePage() {
   const configPath = getResolvedDynamicConfigPath();
-  const initialConfig = await readInitialConfig(configPath);
+  const initialConfig = configPath ? await readInitialConfig(configPath) : ensureConfigShape({});
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -36,7 +36,22 @@ export default async function HomePage() {
             <ThemeToggle />
           </div>
         </section>
-        <TraefikEditor initialConfig={initialConfig} configPath={configPath} />
+        {configPath ? (
+          <TraefikEditor initialConfig={initialConfig} configPath={configPath} />
+        ) : (
+          <section className="mx-auto max-w-7xl px-4 md:px-8">
+            <div className="rounded-lg border bg-card/85 p-6 backdrop-blur">
+              <h2 className="text-xl font-semibold text-foreground">Missing Environment Variable</h2>
+              <p className="mt-2 text-sm text-muted-foreground">
+                `DYNAMIC_CONFIG_PATH` is not set. Add it to your `.env` file and restart the app.
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Example: <code>DYNAMIC_CONFIG_PATH=/absolute/path/to/dynamic.yml</code>
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">The editor is disabled until this variable is configured.</p>
+            </div>
+          </section>
+        )}
       </div>
     </main>
   );

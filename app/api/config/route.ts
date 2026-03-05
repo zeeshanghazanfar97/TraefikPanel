@@ -6,6 +6,13 @@ import { parseDynamicYaml } from "@/lib/traefik";
 
 export async function GET() {
   const configPath = getResolvedDynamicConfigPath();
+  if (!configPath) {
+    return NextResponse.json(
+      { error: "DYNAMIC_CONFIG_PATH is missing. Set it in environment before using the editor." },
+      { status: 400 }
+    );
+  }
+
   try {
     const content = await fs.readFile(configPath, "utf8");
     return NextResponse.json({ content, path: configPath });
@@ -16,6 +23,13 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const configPath = getResolvedDynamicConfigPath();
+  if (!configPath) {
+    return NextResponse.json(
+      { error: "DYNAMIC_CONFIG_PATH is missing. Set it in environment before using the editor." },
+      { status: 400 }
+    );
+  }
+
   try {
     const payload = (await request.json()) as { content?: string };
     if (typeof payload.content !== "string") {

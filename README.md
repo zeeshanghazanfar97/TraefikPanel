@@ -13,15 +13,14 @@ Open http://localhost:3000.
 
 ### Configurable dynamic file path
 
-Set `DYNAMIC_CONFIG_PATH` to control where the app reads/writes Traefik dynamic config:
+Set `DYNAMIC_CONFIG_PATH` to control where the app reads/writes Traefik dynamic config.
+This variable is required (there is no fallback default):
 
 ```bash
-# Relative to project root
-export DYNAMIC_CONFIG_PATH=dynamic.yml
-
-# Or absolute path
 export DYNAMIC_CONFIG_PATH=/data/traefik/dynamic.yml
 ```
+
+If it is missing, the web UI shows a simple message and disables the editor.
 
 ## What it supports
 
@@ -44,12 +43,17 @@ Build and run with Docker Compose:
 docker compose up --build -d
 ```
 
-The default compose file maps:
+Create `.env` from `.env.example` and set:
 
-- Host `./dynamic.yml` -> Container `/data/dynamic.yml`
-- `DYNAMIC_CONFIG_PATH=/data/dynamic.yml`
+```bash
+DYNAMIC_CONFIG_PATH=/absolute/path/to/dynamic.yml
+```
 
-Customize the env var and volume mapping in [docker-compose.yml](/Users/zeeshanghazanfar/Documents/PersonalProjects/TraefikPanel/docker-compose.yml) for your environment.
+Compose uses that env var for both:
+- Container env `DYNAMIC_CONFIG_PATH`
+- Bind mount source and destination path
+
+So use an absolute path that exists on your host.
 
 ## Doc basis
 

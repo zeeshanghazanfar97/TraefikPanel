@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   traefik-panel:
     build:
@@ -11,7 +9,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DYNAMIC_CONFIG_PATH=${DYNAMIC_CONFIG_PATH:-./dynamic.yml}
+      - DYNAMIC_CONFIG_PATH=${DYNAMIC_CONFIG_PATH:?DYNAMIC_CONFIG_PATH must be set in .env}
     networks:
       - traefik-public
     labels:
@@ -22,7 +20,7 @@ services:
       # - "traefik.http.routers.traefikpanel.middlewares=authentik@file"
       - "traefik.http.services.traefikpanel.loadbalancer.server.port=3000"
     volumes:
-      - ${DYNAMIC_CONFIG_PATH:-./dynamic.yml}:/data/dynamic.yml
+      - ${DYNAMIC_CONFIG_PATH:?DYNAMIC_CONFIG_PATH must be set in .env}:${DYNAMIC_CONFIG_PATH:?DYNAMIC_CONFIG_PATH must be set in .env}
     restart: unless-stopped
 
 networks:

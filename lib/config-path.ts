@@ -1,23 +1,24 @@
 import path from "node:path";
 
-const DEFAULT_DYNAMIC_CONFIG_PATH = "dynamic.yml";
-
-function normalizeConfiguredPath(value: string | undefined): string {
-  const trimmed = value?.trim();
+export function getDynamicConfigPathSetting(): string | null {
+  const trimmed = process.env.DYNAMIC_CONFIG_PATH?.trim();
   if (!trimmed) {
-    return DEFAULT_DYNAMIC_CONFIG_PATH;
+    return null;
   }
   return trimmed;
 }
 
-export function getDynamicConfigPathSetting(): string {
-  return normalizeConfiguredPath(process.env.DYNAMIC_CONFIG_PATH);
+export function resolveDynamicConfigPath(configuredPath: string): string {
+  if (path.isAbsolute(configuredPath)) {
+    return configuredPath;
+  }
+  return path.join(process.cwd(), configuredPath);
 }
 
-export function getResolvedDynamicConfigPath(): string {
+export function getResolvedDynamicConfigPath(): string | null {
   const configured = getDynamicConfigPathSetting();
-  if (path.isAbsolute(configured)) {
-    return configured;
+  if (!configured) {
+    return null;
   }
-  return path.join(process.cwd(), configured);
+  return resolveDynamicConfigPath(configured);
 }
