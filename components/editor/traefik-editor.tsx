@@ -20,6 +20,14 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -56,8 +64,6 @@ type SaveDiffPreview = {
   changed: boolean;
   truncated: boolean;
 };
-
-const MAX_CONFIRM_TEXT_CHARS = 15000;
 
 type DiffEntry = {
   type: "add" | "remove";
@@ -172,6 +178,14 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
   const [rawDirty, setRawDirty] = useState(false);
   const [rawError, setRawError] = useState("");
   const [isPreparingSave, setIsPreparingSave] = useState(false);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [saveDiffPreview, setSaveDiffPreview] = useState<SaveDiffPreview>({
+    text: "No textual changes detected.",
+    additions: 0,
+    removals: 0,
+    changed: false,
+    truncated: false
+  });
 
   const yamlText = useMemo(() => toDynamicYaml(config), [config]);
   const totalEntries = useMemo(() => countEntries(config), [config]);
@@ -238,18 +252,8 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
     try {
       const data = await fetchLatestConfigContent();
       const diffPreview = buildSaveDiffPreview(data.content ?? "", yamlText);
-      const header = `Save changes to ${configPath}?\\n+${diffPreview.additions} additions, -${diffPreview.removals} removals`;
-      const bodyText =
-        diffPreview.text.length > MAX_CONFIRM_TEXT_CHARS
-          ? `${diffPreview.text.slice(0, MAX_CONFIRM_TEXT_CHARS)}\\n... diff preview truncated`
-          : diffPreview.text;
-      const confirmed = window.confirm(`${header}\\n\\n${bodyText}`);
-      if (!confirmed) {
-        setSaveState("idle");
-        setMessage("Save cancelled.");
-        return;
-      }
-      await confirmAndSave();
+      setSaveDiffPreview(diffPreview);
+      setIsConfirmDialogOpen(true);
     } catch (error) {
       setSaveState("error");
       setMessage(error instanceof Error ? error.message : "Unable to prepare save preview.");
@@ -276,6 +280,7 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
 
       setSaveState("saved");
       setMessage(`Saved to ${configPath}.`);
+      setIsConfirmDialogOpen(false);
     } catch (error) {
       setSaveState("error");
       setMessage(error instanceof Error ? error.message : "Unable to save configured dynamic file.");
@@ -367,6 +372,47 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
           <AlertDescription>{message}</AlertDescription>
         </Alert>
       ) : null}
+
+      <Dialog
+        open={isConfirmDialogOpen}
+        onOpenChange={(open) => {
+          if (saveState !== "saving") {
+            setIsConfirmDialogOpen(open);
+          }
+        }}
+      >
+        <DialogContent className="max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Confirm Save</DialogTitle>
+            <DialogDescription>Review these changes before writing to disk.</DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">+{saveDiffPreview.additions} additions</Badge>
+            <Badge variant="outline">-{saveDiffPreview.removals} removals</Badge>
+            {saveDiffPreview.changed ? null : <Badge variant="secondary">No changes</Badge>}
+          </div>
+
+          <ScrollArea className="h-[420px] rounded-md border bg-muted/40 p-3">
+            <pre className="text-xs leading-5 text-foreground">{saveDiffPreview.text}</pre>
+          </ScrollArea>
+
+          {saveDiffPreview.truncated ? (
+            <p className="text-xs text-muted-foreground">
+              Preview is truncated for readability. Full YAML will still be saved.
+            </p>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setIsConfirmDialogOpen(false)} disabled={saveState === "saving"}>
+              Cancel
+            </Button>
+            <Button onClick={confirmAndSave} disabled={saveState === "saving"}>
+              {saveState === "saving" ? "Saving..." : "Confirm Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="bg-card/85 backdrop-blur">
