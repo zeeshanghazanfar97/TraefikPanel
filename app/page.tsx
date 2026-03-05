@@ -4,6 +4,8 @@ import { TraefikEditor } from "@/components/editor/traefik-editor";
 import { ensureConfigShape, parseDynamicYaml } from "@/lib/traefik";
 import { getResolvedDynamicConfigPath } from "@/lib/config-path";
 
+export const dynamic = "force-dynamic";
+
 async function readInitialConfig(configPath: string) {
   try {
     const raw = await fs.readFile(configPath, "utf8");
