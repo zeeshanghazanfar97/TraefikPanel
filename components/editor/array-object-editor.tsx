@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import yaml from "js-yaml";
 import { Pencil, Plus, Trash2 } from "lucide-react";
+import type { DisabledArrayItem } from "@/lib/traefik";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -21,45 +23,87 @@ type ArrayObjectEditorProps = {
   description: string;
   itemLabel: string;
   items: Array<Record<string, unknown>>;
+  disabledItems: DisabledArrayItem[];
   template: Record<string, unknown>;
   onChange: (next: Array<Record<string, unknown>>) => void;
+  onChangeDisabled: (next: DisabledArrayItem[]) => void;
+  onToggleItem: (payload: { index?: number; id?: string }, enable: boolean) => void;
+  onDeleteDisabledItem: (id: string) => void;
 };
 
 function toYamlFragment(value: unknown) {
   return yaml.dump(value, { lineWidth: 100, noRefs: true, sortKeys: false });
 }
 
+type EditTarget = { kind: "enabled"; index: number } | { kind: "disabled"; id: string } | null;
+type ArrayRow = {
+  key: string;
+  item: Record<string, unknown>;
+  disabled: boolean;
+  index?: number;
+  id?: string;
+};
+
 export function ArrayObjectEditor({
   title,
   description,
   itemLabel,
   items,
+  disabledItems,
   template,
-  onChange
+  onChange,
+  onChangeDisabled,
+  onToggleItem,
+  onDeleteDisabledItem
 }: ArrayObjectEditorProps) {
   const [open, setOpen] = useState(false);
-  const [editIndex, setEditIndex] = useState<number | null>(null);
+  const [editTarget, setEditTarget] = useState<EditTarget>(null);
   const [fragment, setFragment] = useState("");
   const [error, setError] = useState("");
 
-  const rows = useMemo(() => items, [items]);
+  const rows = useMemo<ArrayRow[]>(
+    () => [
+      ...items.map((item, index) => ({
+        key: `enabled-${index}`,
+        item,
+        index,
+        disabled: false
+      })),
+      ...disabledItems.map((item) => ({
+        key: `disabled-${item.id}`,
+        item: item.value,
+        id: item.id,
+        disabled: true
+      }))
+    ],
+    [items, disabledItems]
+  );
 
   const openAdd = () => {
-    setEditIndex(null);
+    setEditTarget(null);
     setFragment(toYamlFragment(template));
     setError("");
     setOpen(true);
   };
 
-  const openEdit = (index: number) => {
-    setEditIndex(index);
-    setFragment(toYamlFragment(rows[index]));
+  const openEditEnabled = (index: number) => {
+    setEditTarget({ kind: "enabled", index });
+    setFragment(toYamlFragment(items[index]));
+    setError("");
+    setOpen(true);
+  };
+
+  const openEditDisabled = (id: string) => {
+    const target = disabledItems.find((item) => item.id === id);
+    if (!target) return;
+    setEditTarget({ kind: "disabled", id });
+    setFragment(toYamlFragment(target.value));
     setError("");
     setOpen(true);
   };
 
   const remove = (index: number) => {
-    onChange(rows.filter((_, i) => i !== index));
+    onChange(items.filter((_, i) => i !== index));
   };
 
   const save = () => {
@@ -70,13 +114,19 @@ export function ArrayObjectEditor({
         return;
       }
 
-      const next = [...rows];
-      if (editIndex == null) {
-        next.push(parsed as Record<string, unknown>);
+      const nextEnabled = [...items];
+      if (editTarget == null) {
+        nextEnabled.push(parsed as Record<string, unknown>);
+        onChange(nextEnabled);
+      } else if (editTarget.kind === "enabled") {
+        nextEnabled[editTarget.index] = parsed as Record<string, unknown>;
+        onChange(nextEnabled);
       } else {
-        next[editIndex] = parsed as Record<string, unknown>;
+        const nextDisabled = disabledItems.map((item) =>
+          item.id === editTarget.id ? { ...item, value: parsed as Record<string, unknown> } : item
+        );
+        onChangeDisabled(nextDisabled);
       }
-      onChange(next);
       setOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid YAML fragment.");
@@ -102,22 +152,65 @@ export function ArrayObjectEditor({
             No {itemLabel.toLowerCase()}s yet.
           </div>
         ) : (
-          rows.map((item, index) => (
+          rows.map((row) => (
             <div
-              key={`${itemLabel}-${index}`}
+              key={row.key}
               className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card/70 p-3"
             >
               <div className="min-w-0">
-                <p className="text-sm font-semibold">{itemLabel} #{index + 1}</p>
-                <p className="truncate text-sm text-muted-foreground">{JSON.stringify(item)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">
+                    {itemLabel} {row.disabled ? "(disabled)" : row.index != null ? `#${row.index + 1}` : ""}
+                  </p>
+                  {row.disabled ? <Badge variant="outline">Disabled</Badge> : <Badge variant="success">Enabled</Badge>}
+                </div>
+                <p className="truncate text-sm text-muted-foreground">{JSON.stringify(row.item)}</p>
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => openEdit(index)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    row.disabled && row.id ? openEditDisabled(row.id) : row.index != null ? openEditEnabled(row.index) : null
+                  }
+                >
                   <Pencil className="mr-1 h-4 w-4" /> Edit
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => remove(index)}>
-                  <Trash2 className="mr-1 h-4 w-4" /> Delete
-                </Button>
+                {row.disabled ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => (row.id ? onToggleItem({ id: row.id }, true) : null)}
+                    >
+                      Enable
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => (row.id ? onDeleteDisabledItem(row.id) : null)}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" /> Delete
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => (row.index != null ? onToggleItem({ index: row.index }, false) : null)}
+                    >
+                      Disable
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => (row.index != null ? remove(row.index) : null)}
+                    >
+                      <Trash2 className="mr-1 h-4 w-4" /> Delete
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ))
@@ -127,7 +220,7 @@ export function ArrayObjectEditor({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editIndex == null ? `Add ${itemLabel}` : `Edit ${itemLabel}`}</DialogTitle>
+            <DialogTitle>{editTarget == null ? `Add ${itemLabel}` : `Edit ${itemLabel}`}</DialogTitle>
             <DialogDescription>Configure all fields as YAML.</DialogDescription>
           </DialogHeader>
 

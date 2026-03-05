@@ -47,8 +47,9 @@ Behavior:
   - `tls.certificates`, `tls.options`, `tls.stores`
 - Full YAML fragment editing per object, so any Traefik field is supported.
 - Raw full-file YAML tab.
+- Enable/disable toggle per object. Disabled objects are written as commented YAML blocks and can be re-enabled later.
 - API-backed load/save to configurable `DYNAMIC_CONFIG_PATH`.
-- Save confirmation dialog with YAML diff preview.
+- Save confirmation dialog with semantic change overview (add/remove/edit/enable/disable).
 - Live YAML preview and download.
 - Dark mode toggle with persisted theme preference.
 

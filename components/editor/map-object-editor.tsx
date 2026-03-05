@@ -24,8 +24,12 @@ type MapObjectEditorProps = {
   description: string;
   itemLabel: string;
   entries: NamedRecord;
+  disabledEntries: NamedRecord;
   template: Record<string, unknown>;
   onChange: (next: NamedRecord) => void;
+  onChangeDisabled: (next: NamedRecord) => void;
+  onToggleEntry: (entryName: string, enable: boolean) => void;
+  onDeleteDisabledEntry: (entryName: string) => void;
 };
 
 type EditorMode = "add" | "edit";
@@ -49,20 +53,44 @@ export function MapObjectEditor({
   description,
   itemLabel,
   entries,
+  disabledEntries,
   template,
-  onChange
+  onChange,
+  onChangeDisabled,
+  onToggleEntry,
+  onDeleteDisabledEntry
 }: MapObjectEditorProps) {
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<EditorMode>("add");
+  const [editingDisabled, setEditingDisabled] = useState(false);
   const [originalName, setOriginalName] = useState("");
   const [name, setName] = useState("");
   const [fragment, setFragment] = useState("");
   const [error, setError] = useState("");
 
-  const rows = useMemo(() => Object.entries(entries), [entries]);
+  const rows = useMemo(() => {
+    const enabledRows = Object.entries(entries)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([entryName, value]) => ({
+        entryName,
+        value: value as Record<string, unknown>,
+        disabled: false
+      }));
+
+    const disabledRows = Object.entries(disabledEntries)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([entryName, value]) => ({
+        entryName,
+        value: value as Record<string, unknown>,
+        disabled: true
+      }));
+
+    return [...enabledRows, ...disabledRows];
+  }, [entries, disabledEntries]);
 
   const openAddDialog = () => {
     setMode("add");
+    setEditingDisabled(false);
     setOriginalName("");
     setName("");
     setFragment(toYamlFragment(template));
@@ -70,8 +98,9 @@ export function MapObjectEditor({
     setOpen(true);
   };
 
-  const openEditDialog = (entryName: string, value: Record<string, unknown>) => {
+  const openEditDialog = (entryName: string, value: Record<string, unknown>, disabled: boolean) => {
     setMode("edit");
+    setEditingDisabled(disabled);
     setOriginalName(entryName);
     setName(entryName);
     setFragment(toYamlFragment(value));
@@ -100,17 +129,30 @@ export function MapObjectEditor({
 
       const trimmedName = name.trim();
       const isRenamed = mode === "edit" && trimmedName !== originalName;
-      if ((mode === "add" || isRenamed) && entries[trimmedName]) {
-        setError(`A ${itemLabel} named \"${trimmedName}\" already exists.`);
+      const nameTakenInEnabled = entries[trimmedName] && !(mode === "edit" && !editingDisabled && !isRenamed);
+      const nameTakenInDisabled =
+        disabledEntries[trimmedName] && !(mode === "edit" && editingDisabled && !isRenamed);
+
+      if ((mode === "add" || isRenamed) && (nameTakenInEnabled || nameTakenInDisabled)) {
+        setError(`A ${itemLabel} named "${trimmedName}" already exists.`);
         return;
       }
 
-      const next = { ...entries };
-      if (mode === "edit" && isRenamed) {
-        delete next[originalName];
+      if (editingDisabled) {
+        const nextDisabled = { ...disabledEntries };
+        if (mode === "edit" && isRenamed) {
+          delete nextDisabled[originalName];
+        }
+        nextDisabled[trimmedName] = parsed as Record<string, unknown>;
+        onChangeDisabled(nextDisabled);
+      } else {
+        const nextEnabled = { ...entries };
+        if (mode === "edit" && isRenamed) {
+          delete nextEnabled[originalName];
+        }
+        nextEnabled[trimmedName] = parsed as Record<string, unknown>;
+        onChange(nextEnabled);
       }
-      next[trimmedName] = parsed as Record<string, unknown>;
-      onChange(next);
       setOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid YAML fragment.");
@@ -136,30 +178,47 @@ export function MapObjectEditor({
             No {itemLabel.toLowerCase()}s yet.
           </div>
         ) : (
-          rows.map(([entryName, value]) => (
+          rows.map((row) => (
             <div
-              key={entryName}
+              key={`${row.disabled ? "disabled" : "enabled"}-${row.entryName}`}
               className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card/70 p-3"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{entryName}</Badge>
+                  <Badge variant="secondary">{row.entryName}</Badge>
+                  {row.disabled ? <Badge variant="outline">Disabled</Badge> : <Badge variant="success">Enabled</Badge>}
                 </div>
                 <p className="truncate text-sm text-muted-foreground">
-                  {summarizeConfig(entryName, value as Record<string, unknown>)}
+                  {summarizeConfig(row.entryName, row.value)}
                 </p>
               </div>
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => openEditDialog(entryName, value as Record<string, unknown>)}
+                  onClick={() => openEditDialog(row.entryName, row.value, row.disabled)}
                 >
                   <Pencil className="mr-1 h-4 w-4" /> Edit
                 </Button>
-                <Button variant="destructive" size="sm" onClick={() => removeEntry(entryName)}>
-                  <Trash2 className="mr-1 h-4 w-4" /> Delete
-                </Button>
+                {row.disabled ? (
+                  <>
+                    <Button variant="secondary" size="sm" onClick={() => onToggleEntry(row.entryName, true)}>
+                      Enable
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => onDeleteDisabledEntry(row.entryName)}>
+                      <Trash2 className="mr-1 h-4 w-4" /> Delete
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="secondary" size="sm" onClick={() => onToggleEntry(row.entryName, false)}>
+                      Disable
+                    </Button>
+                    <Button variant="destructive" size="sm" onClick={() => removeEntry(row.entryName)}>
+                      <Trash2 className="mr-1 h-4 w-4" /> Delete
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           ))

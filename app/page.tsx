@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TraefikEditor } from "@/components/editor/traefik-editor";
 import { AUTH_SESSION_COOKIE, isAuthEnabled, isValidSessionToken } from "@/lib/auth";
-import { ensureConfigShape, parseDynamicYaml } from "@/lib/traefik";
+import { createEmptyDisabledCollections, ensureConfigShape, extractDisabledCollections, parseDynamicYaml } from "@/lib/traefik";
 import { getResolvedDynamicConfigPath } from "@/lib/config-path";
 
 export const dynamic = "force-dynamic";
@@ -12,10 +12,14 @@ export const dynamic = "force-dynamic";
 async function readInitialConfig(configPath: string) {
   try {
     const raw = await fs.readFile(configPath, "utf8");
-    return { config: ensureConfigShape(parseDynamicYaml(raw)), error: null as string | null };
+    return {
+      config: ensureConfigShape(parseDynamicYaml(raw)),
+      disabled: extractDisabledCollections(raw),
+      error: null as string | null
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error while reading dynamic config.";
-    return { config: ensureConfigShape({}), error: message };
+    return { config: ensureConfigShape({}), disabled: createEmptyDisabledCollections(), error: message };
   }
 }
 
@@ -29,7 +33,7 @@ export default async function HomePage() {
   const configPath = getResolvedDynamicConfigPath();
   const initialLoad = configPath
     ? await readInitialConfig(configPath)
-    : { config: ensureConfigShape({}), error: null as string | null };
+    : { config: ensureConfigShape({}), disabled: createEmptyDisabledCollections(), error: null as string | null };
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -65,7 +69,12 @@ export default async function HomePage() {
           </section>
         ) : null}
         {configPath ? (
-          <TraefikEditor initialConfig={initialLoad.config} configPath={configPath} authEnabled={authEnabled} />
+          <TraefikEditor
+            initialConfig={initialLoad.config}
+            initialDisabledCollections={initialLoad.disabled}
+            configPath={configPath}
+            authEnabled={authEnabled}
+          />
         ) : (
           <section className="mx-auto max-w-7xl px-4 md:px-8">
             <div className="rounded-lg border bg-card/85 p-6 backdrop-blur">

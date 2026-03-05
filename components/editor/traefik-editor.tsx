@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Download, LogOut, RefreshCw, Save } from "lucide-react";
 import {
+  createEmptyDisabledCollections,
+  extractDisabledCollections,
   ensureConfigShape,
   getArrayAtPath,
   getMapAtPath,
   parseDynamicYaml,
   setArrayAtPath,
   setMapAtPath,
-  toDynamicYaml,
+  toDynamicYamlWithDisabled,
+  type DisabledArrayItem,
+  type DisabledCollections,
   type NamedRecord,
   type TraefikDynamicConfig
 } from "@/lib/traefik";
@@ -46,19 +50,23 @@ const SECTION_META = [
   { path: ["tls", "certificates"], label: "TLS Certificates", isArray: true }
 ] as const;
 
-function countEntries(config: TraefikDynamicConfig) {
-  return SECTION_META.reduce((count, section) => {
+function countEntries(config: TraefikDynamicConfig, disabled: DisabledCollections) {
+  const enabledCount = SECTION_META.reduce((count, section) => {
     if ("isArray" in section && section.isArray) {
       return count + getArrayAtPath(config, section.path).length;
     }
     return count + Object.keys(getMapAtPath(config, section.path)).length;
   }, 0);
+
+  const disabledMapCount = Object.values(disabled.maps).reduce((count, map) => count + Object.keys(map).length, 0);
+  const disabledArrayCount = Object.values(disabled.arrays).reduce((count, items) => count + items.length, 0);
+  return enabledCount + disabledMapCount + disabledArrayCount;
 }
 
 const MAX_DETAILS_PER_ITEM = 8;
 const MAX_MODAL_CHANGES = 250;
 
-type ChangeType = "added" | "removed" | "edited";
+type ChangeType = "added" | "removed" | "edited" | "disabled" | "enabled";
 
 type SaveChangeItem = {
   type: ChangeType;
@@ -71,6 +79,8 @@ type SaveChangeOverview = {
   additions: number;
   removals: number;
   edits: number;
+  disabled: number;
+  enabled: number;
   changed: boolean;
   truncated: boolean;
   items: SaveChangeItem[];
@@ -165,46 +175,90 @@ function collectFieldDetails(before: unknown, after: unknown, prefix = ""): stri
   return details;
 }
 
-function buildSaveChangeOverview(beforeConfig: TraefikDynamicConfig, afterConfig: TraefikDynamicConfig): SaveChangeOverview {
+function getDisabledMapForPath(disabled: DisabledCollections, path: readonly string[]): NamedRecord {
+  return disabled.maps[path.join(".")] ?? {};
+}
+
+function buildSaveChangeOverview(
+  beforeConfig: TraefikDynamicConfig,
+  afterConfig: TraefikDynamicConfig,
+  beforeDisabled: DisabledCollections,
+  afterDisabled: DisabledCollections
+): SaveChangeOverview {
   const items: SaveChangeItem[] = [];
 
   for (const section of MAP_COMPARE_SECTIONS) {
     const beforeMap = getMapAtPath(beforeConfig, section.path);
     const afterMap = getMapAtPath(afterConfig, section.path);
-    const beforeKeys = Object.keys(beforeMap).sort();
-    const afterKeys = Object.keys(afterMap).sort();
+    const beforeDisabledMap = getDisabledMapForPath(beforeDisabled, section.path);
+    const afterDisabledMap = getDisabledMapForPath(afterDisabled, section.path);
 
-    for (const key of afterKeys) {
-      if (!beforeMap[key]) {
+    const allKeys = Array.from(
+      new Set([
+        ...Object.keys(beforeMap),
+        ...Object.keys(afterMap),
+        ...Object.keys(beforeDisabledMap),
+        ...Object.keys(afterDisabledMap)
+      ])
+    ).sort();
+
+    for (const key of allKeys) {
+      const beforeEnabledValue = beforeMap[key];
+      const beforeDisabledValue = beforeDisabledMap[key];
+      const afterEnabledValue = afterMap[key];
+      const afterDisabledValue = afterDisabledMap[key];
+
+      const beforeState = beforeEnabledValue
+        ? { mode: "enabled" as const, value: beforeEnabledValue }
+        : beforeDisabledValue
+          ? { mode: "disabled" as const, value: beforeDisabledValue }
+          : null;
+      const afterState = afterEnabledValue
+        ? { mode: "enabled" as const, value: afterEnabledValue }
+        : afterDisabledValue
+          ? { mode: "disabled" as const, value: afterDisabledValue }
+          : null;
+
+      if (!beforeState && afterState) {
         items.push({
-          type: "added",
+          type: afterState.mode === "enabled" ? "added" : "disabled",
           section: section.label,
           name: key,
-          details: collectFieldDetails({}, afterMap[key], "").slice(0, 3)
+          details: collectFieldDetails({}, afterState.value, "").slice(0, 3)
         });
+        continue;
       }
-    }
 
-    for (const key of beforeKeys) {
-      if (!afterMap[key]) {
+      if (beforeState && !afterState) {
         items.push({
           type: "removed",
           section: section.label,
           name: key,
           details: []
         });
+        continue;
       }
-    }
 
-    for (const key of afterKeys) {
-      if (!beforeMap[key] || !afterMap[key]) continue;
-      if (!deepEqual(beforeMap[key], afterMap[key])) {
-        const details = collectFieldDetails(beforeMap[key], afterMap[key]);
+      if (!beforeState || !afterState) {
+        continue;
+      }
+
+      if (beforeState.mode !== afterState.mode) {
+        items.push({
+          type: beforeState.mode === "enabled" ? "disabled" : "enabled",
+          section: section.label,
+          name: key,
+          details: collectFieldDetails(beforeState.value, afterState.value).slice(0, MAX_DETAILS_PER_ITEM)
+        });
+        continue;
+      }
+
+      if (!deepEqual(beforeState.value, afterState.value)) {
         items.push({
           type: "edited",
           section: section.label,
           name: key,
-          details
+          details: collectFieldDetails(beforeState.value, afterState.value)
         });
       }
     }
@@ -246,12 +300,16 @@ function buildSaveChangeOverview(beforeConfig: TraefikDynamicConfig, afterConfig
   const additions = items.filter((item) => item.type === "added").length;
   const removals = items.filter((item) => item.type === "removed").length;
   const edits = items.filter((item) => item.type === "edited").length;
+  const disabled = items.filter((item) => item.type === "disabled").length;
+  const enabled = items.filter((item) => item.type === "enabled").length;
   const truncated = items.length > MAX_MODAL_CHANGES;
 
   return {
     additions,
     removals,
     edits,
+    disabled,
+    enabled,
     changed: items.length > 0,
     truncated,
     items: truncated ? items.slice(0, MAX_MODAL_CHANGES) : items
@@ -260,12 +318,29 @@ function buildSaveChangeOverview(beforeConfig: TraefikDynamicConfig, afterConfig
 
 type TraefikEditorProps = {
   initialConfig: TraefikDynamicConfig;
+  initialDisabledCollections: DisabledCollections;
   configPath: string;
   authEnabled: boolean;
 };
 
-export function TraefikEditor({ initialConfig, configPath, authEnabled }: TraefikEditorProps) {
+function toPathKey(path: readonly string[]): string {
+  return path.join(".");
+}
+
+function createDisabledArrayId(): string {
+  return `disabled_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function TraefikEditor({
+  initialConfig,
+  initialDisabledCollections,
+  configPath,
+  authEnabled
+}: TraefikEditorProps) {
   const [config, setConfig] = useState<TraefikDynamicConfig>(() => ensureConfigShape(initialConfig));
+  const [disabledCollections, setDisabledCollections] = useState<DisabledCollections>(
+    () => initialDisabledCollections ?? createEmptyDisabledCollections()
+  );
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [message, setMessage] = useState<string>("");
   const [rawYaml, setRawYaml] = useState<string>("");
@@ -277,13 +352,21 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
     additions: 0,
     removals: 0,
     edits: 0,
+    disabled: 0,
+    enabled: 0,
     changed: false,
     truncated: false,
     items: []
   });
 
-  const yamlText = useMemo(() => toDynamicYaml(config), [config]);
-  const totalEntries = useMemo(() => countEntries(config), [config]);
+  const yamlText = useMemo(
+    () => toDynamicYamlWithDisabled(config, disabledCollections),
+    [config, disabledCollections]
+  );
+  const totalEntries = useMemo(
+    () => countEntries(config, disabledCollections),
+    [config, disabledCollections]
+  );
 
   useEffect(() => {
     if (!rawDirty) {
@@ -299,6 +382,96 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
   const updateArray = (path: readonly string[], value: Array<Record<string, unknown>>) => {
     setConfig((current) => ensureConfigShape(setArrayAtPath(current, path, value)));
     setSaveState("idle");
+  };
+
+  const getDisabledMapByPath = (path: readonly string[]): NamedRecord => {
+    return disabledCollections.maps[toPathKey(path)] ?? {};
+  };
+
+  const setDisabledMapByPath = (path: readonly string[], value: NamedRecord) => {
+    const pathKey = toPathKey(path);
+    setDisabledCollections((current) => ({
+      ...current,
+      maps: {
+        ...current.maps,
+        [pathKey]: value
+      }
+    }));
+    setSaveState("idle");
+  };
+
+  const getDisabledArrayByPath = (path: readonly string[]): DisabledArrayItem[] => {
+    return disabledCollections.arrays[toPathKey(path)] ?? [];
+  };
+
+  const setDisabledArrayByPath = (path: readonly string[], value: DisabledArrayItem[]) => {
+    const pathKey = toPathKey(path);
+    setDisabledCollections((current) => ({
+      ...current,
+      arrays: {
+        ...current.arrays,
+        [pathKey]: value
+      }
+    }));
+    setSaveState("idle");
+  };
+
+  const toggleMapEntry = (path: readonly string[], name: string, enable: boolean) => {
+    const enabledEntries = getMapAtPath(config, path);
+    const disabledEntries = getDisabledMapByPath(path);
+
+    if (enable) {
+      if (!disabledEntries[name]) return;
+      const nextDisabled = { ...disabledEntries };
+      const entry = nextDisabled[name];
+      delete nextDisabled[name];
+      updateMap(path, { ...enabledEntries, [name]: entry });
+      setDisabledMapByPath(path, nextDisabled);
+      return;
+    }
+
+    if (!enabledEntries[name]) return;
+    const nextEnabled = { ...enabledEntries };
+    const entry = nextEnabled[name];
+    delete nextEnabled[name];
+    updateMap(path, nextEnabled);
+    setDisabledMapByPath(path, { ...disabledEntries, [name]: entry });
+  };
+
+  const deleteDisabledMapEntry = (path: readonly string[], name: string) => {
+    const disabledEntries = getDisabledMapByPath(path);
+    if (!disabledEntries[name]) return;
+    const nextDisabled = { ...disabledEntries };
+    delete nextDisabled[name];
+    setDisabledMapByPath(path, nextDisabled);
+  };
+
+  const toggleArrayEntry = (path: readonly string[], payload: { index?: number; id?: string }, enable: boolean) => {
+    const enabledItems = getArrayAtPath(config, path);
+    const disabledItems = getDisabledArrayByPath(path);
+
+    if (enable) {
+      if (!payload.id) return;
+      const target = disabledItems.find((item) => item.id === payload.id);
+      if (!target) return;
+      const nextDisabled = disabledItems.filter((item) => item.id !== payload.id);
+      updateArray(path, [...enabledItems, target.value]);
+      setDisabledArrayByPath(path, nextDisabled);
+      return;
+    }
+
+    if (typeof payload.index !== "number") return;
+    const target = enabledItems[payload.index];
+    if (!target) return;
+    const nextEnabled = enabledItems.filter((_, idx) => idx !== payload.index);
+    updateArray(path, nextEnabled);
+    setDisabledArrayByPath(path, [...disabledItems, { id: createDisabledArrayId(), value: target }]);
+  };
+
+  const deleteDisabledArrayEntry = (path: readonly string[], id: string) => {
+    const disabledItems = getDisabledArrayByPath(path);
+    const nextDisabled = disabledItems.filter((item) => item.id !== id);
+    setDisabledArrayByPath(path, nextDisabled);
   };
 
   const fetchLatestConfigContent = async () => {
@@ -328,8 +501,10 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
       const data = await fetchLatestConfigContent();
       const parsed = data.content?.trim().length ? parseDynamicYaml(data.content) : {};
       const shaped = ensureConfigShape(parsed);
+      const disabled = extractDisabledCollections(data.content ?? "");
       setConfig(shaped);
-      setRawYaml(toDynamicYaml(shaped));
+      setDisabledCollections(disabled);
+      setRawYaml(toDynamicYamlWithDisabled(shaped, disabled));
       setRawDirty(false);
       setSaveState("idle");
       setMessage(`Reloaded config from ${data.path}.`);
@@ -347,7 +522,8 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
     try {
       const data = await fetchLatestConfigContent();
       const currentConfig = ensureConfigShape(parseDynamicYaml(data.content ?? ""));
-      const overview = buildSaveChangeOverview(currentConfig, config);
+      const currentDisabled = extractDisabledCollections(data.content ?? "");
+      const overview = buildSaveChangeOverview(currentConfig, config, currentDisabled, disabledCollections);
       setSaveChangeOverview(overview);
       setIsConfirmDialogOpen(true);
     } catch (error) {
@@ -396,7 +572,10 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
   const applyRawYaml = () => {
     try {
       const parsed = parseDynamicYaml(rawYaml);
-      setConfig(ensureConfigShape(parsed));
+      const shaped = ensureConfigShape(parsed);
+      const disabled = extractDisabledCollections(rawYaml);
+      setConfig(shaped);
+      setDisabledCollections(disabled);
       setRawDirty(false);
       setRawError("");
       setSaveState("idle");
@@ -487,6 +666,8 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
             <Badge variant="secondary">Added: {saveChangeOverview.additions}</Badge>
             <Badge variant="outline">Removed: {saveChangeOverview.removals}</Badge>
             <Badge variant="secondary">Edited: {saveChangeOverview.edits}</Badge>
+            <Badge variant="secondary">Disabled: {saveChangeOverview.disabled}</Badge>
+            <Badge variant="secondary">Enabled: {saveChangeOverview.enabled}</Badge>
             {saveChangeOverview.changed ? null : <Badge variant="secondary">No changes</Badge>}
           </div>
 
@@ -498,7 +679,16 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
                 saveChangeOverview.items.map((item, index) => (
                   <div key={`${item.type}-${item.section}-${item.name}-${index}`} className="rounded-md border bg-card/80 p-3">
                     <p className="font-medium">
-                      {item.type === "added" ? "Add" : item.type === "removed" ? "Remove" : "Edit"} {item.section}:{" "}
+                      {item.type === "added"
+                        ? "Add"
+                        : item.type === "removed"
+                          ? "Remove"
+                          : item.type === "edited"
+                            ? "Edit"
+                            : item.type === "disabled"
+                              ? "Disable"
+                              : "Enable"}{" "}
+                      {item.section}:{" "}
                       <span className="font-semibold">{item.name}</span>
                     </p>
                     {item.details.length > 0 ? (
@@ -553,32 +743,52 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
                   description="Rules, entryPoints, TLS, middlewares and service binding."
                   itemLabel="Router"
                   entries={getMapAtPath(config, ["http", "routers"])}
+                  disabledEntries={getDisabledMapByPath(["http", "routers"])}
                   template={templates.httpRouter}
                   onChange={(next) => updateMap(["http", "routers"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["http", "routers"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["http", "routers"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["http", "routers"], entryName)}
                 />
                 <MapObjectEditor
                   title="HTTP Services"
                   description="Load balancer, weighted, mirroring, or failover service definitions."
                   itemLabel="Service"
                   entries={getMapAtPath(config, ["http", "services"])}
+                  disabledEntries={getDisabledMapByPath(["http", "services"])}
                   template={templates.httpService}
                   onChange={(next) => updateMap(["http", "services"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["http", "services"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["http", "services"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["http", "services"], entryName)}
                 />
                 <MapObjectEditor
                   title="HTTP Middlewares"
                   description="Any middleware type, including plugins and chain definitions."
                   itemLabel="Middleware"
                   entries={getMapAtPath(config, ["http", "middlewares"])}
+                  disabledEntries={getDisabledMapByPath(["http", "middlewares"])}
                   template={templates.httpMiddleware}
                   onChange={(next) => updateMap(["http", "middlewares"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["http", "middlewares"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["http", "middlewares"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["http", "middlewares"], entryName)}
                 />
                 <MapObjectEditor
                   title="HTTP Servers Transports"
                   description="Backend connection transport options for HTTP services."
                   itemLabel="Transport"
                   entries={getMapAtPath(config, ["http", "serversTransports"])}
+                  disabledEntries={getDisabledMapByPath(["http", "serversTransports"])}
                   template={templates.httpServersTransport}
                   onChange={(next) => updateMap(["http", "serversTransports"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["http", "serversTransports"], next)}
+                  onToggleEntry={(entryName, enable) =>
+                    toggleMapEntry(["http", "serversTransports"], entryName, enable)
+                  }
+                  onDeleteDisabledEntry={(entryName) =>
+                    deleteDisabledMapEntry(["http", "serversTransports"], entryName)
+                  }
                 />
               </TabsContent>
 
@@ -588,32 +798,52 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
                   description="HostSNI rules, entry points, middleware and TLS passthrough settings."
                   itemLabel="Router"
                   entries={getMapAtPath(config, ["tcp", "routers"])}
+                  disabledEntries={getDisabledMapByPath(["tcp", "routers"])}
                   template={templates.tcpRouter}
                   onChange={(next) => updateMap(["tcp", "routers"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["tcp", "routers"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["tcp", "routers"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["tcp", "routers"], entryName)}
                 />
                 <MapObjectEditor
                   title="TCP Services"
                   description="TCP load balancer definitions and server addresses."
                   itemLabel="Service"
                   entries={getMapAtPath(config, ["tcp", "services"])}
+                  disabledEntries={getDisabledMapByPath(["tcp", "services"])}
                   template={templates.tcpService}
                   onChange={(next) => updateMap(["tcp", "services"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["tcp", "services"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["tcp", "services"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["tcp", "services"], entryName)}
                 />
                 <MapObjectEditor
                   title="TCP Middlewares"
                   description="MiddlewareTCP definitions such as IP allow list and InFlightConn."
                   itemLabel="Middleware"
                   entries={getMapAtPath(config, ["tcp", "middlewares"])}
+                  disabledEntries={getDisabledMapByPath(["tcp", "middlewares"])}
                   template={templates.tcpMiddleware}
                   onChange={(next) => updateMap(["tcp", "middlewares"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["tcp", "middlewares"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["tcp", "middlewares"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["tcp", "middlewares"], entryName)}
                 />
                 <MapObjectEditor
                   title="TCP Servers Transports"
                   description="Transport tuning for TLS and connection behavior to TCP backends."
                   itemLabel="Transport"
                   entries={getMapAtPath(config, ["tcp", "serversTransports"])}
+                  disabledEntries={getDisabledMapByPath(["tcp", "serversTransports"])}
                   template={templates.tcpServersTransport}
                   onChange={(next) => updateMap(["tcp", "serversTransports"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["tcp", "serversTransports"], next)}
+                  onToggleEntry={(entryName, enable) =>
+                    toggleMapEntry(["tcp", "serversTransports"], entryName, enable)
+                  }
+                  onDeleteDisabledEntry={(entryName) =>
+                    deleteDisabledMapEntry(["tcp", "serversTransports"], entryName)
+                  }
                 />
               </TabsContent>
 
@@ -623,16 +853,24 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
                   description="UDP entryPoints and service associations."
                   itemLabel="Router"
                   entries={getMapAtPath(config, ["udp", "routers"])}
+                  disabledEntries={getDisabledMapByPath(["udp", "routers"])}
                   template={templates.udpRouter}
                   onChange={(next) => updateMap(["udp", "routers"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["udp", "routers"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["udp", "routers"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["udp", "routers"], entryName)}
                 />
                 <MapObjectEditor
                   title="UDP Services"
                   description="UDP load balancer and server addresses."
                   itemLabel="Service"
                   entries={getMapAtPath(config, ["udp", "services"])}
+                  disabledEntries={getDisabledMapByPath(["udp", "services"])}
                   template={templates.udpService}
                   onChange={(next) => updateMap(["udp", "services"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["udp", "services"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["udp", "services"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["udp", "services"], entryName)}
                 />
               </TabsContent>
 
@@ -642,24 +880,36 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
                   description="Static cert/key files for dynamic TLS attachment."
                   itemLabel="Certificate"
                   items={getArrayAtPath(config, ["tls", "certificates"])}
+                  disabledItems={getDisabledArrayByPath(["tls", "certificates"])}
                   template={templates.tlsCertificate}
                   onChange={(next) => updateArray(["tls", "certificates"], next)}
+                  onChangeDisabled={(next) => setDisabledArrayByPath(["tls", "certificates"], next)}
+                  onToggleItem={(payload, enable) => toggleArrayEntry(["tls", "certificates"], payload, enable)}
+                  onDeleteDisabledItem={(id) => deleteDisabledArrayEntry(["tls", "certificates"], id)}
                 />
                 <MapObjectEditor
                   title="TLS Options"
                   description="Cipher suites, min/max versions, and SNI strictness sets."
                   itemLabel="TLS Option Set"
                   entries={getMapAtPath(config, ["tls", "options"])}
+                  disabledEntries={getDisabledMapByPath(["tls", "options"])}
                   template={templates.tlsOption}
                   onChange={(next) => updateMap(["tls", "options"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["tls", "options"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["tls", "options"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["tls", "options"], entryName)}
                 />
                 <MapObjectEditor
                   title="TLS Stores"
                   description="Default certificates and store-level mappings."
                   itemLabel="TLS Store"
                   entries={getMapAtPath(config, ["tls", "stores"])}
+                  disabledEntries={getDisabledMapByPath(["tls", "stores"])}
                   template={templates.tlsStore}
                   onChange={(next) => updateMap(["tls", "stores"], next)}
+                  onChangeDisabled={(next) => setDisabledMapByPath(["tls", "stores"], next)}
+                  onToggleEntry={(entryName, enable) => toggleMapEntry(["tls", "stores"], entryName, enable)}
+                  onDeleteDisabledEntry={(entryName) => deleteDisabledMapEntry(["tls", "stores"], entryName)}
                 />
               </TabsContent>
 
