@@ -1,13 +1,26 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { AUTH_SESSION_COOKIE, isAuthEnabled, isValidSessionToken } from "@/lib/auth";
 import { getResolvedDynamicConfigPath } from "@/lib/config-path";
 import { parseDynamicYaml } from "@/lib/traefik";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function getUnauthorizedResponse() {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
 export async function GET() {
+  if (isAuthEnabled()) {
+    const token = cookies().get(AUTH_SESSION_COOKIE)?.value;
+    if (!isValidSessionToken(token)) {
+      return getUnauthorizedResponse();
+    }
+  }
+
   const configPath = getResolvedDynamicConfigPath();
   if (!configPath) {
     return NextResponse.json(
@@ -39,6 +52,13 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  if (isAuthEnabled()) {
+    const token = cookies().get(AUTH_SESSION_COOKIE)?.value;
+    if (!isValidSessionToken(token)) {
+      return getUnauthorizedResponse();
+    }
+  }
+
   const configPath = getResolvedDynamicConfigPath();
   if (!configPath) {
     return NextResponse.json(

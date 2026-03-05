@@ -24,6 +24,20 @@ If it is missing, the web UI shows a simple message and disables the editor.
 
 If you run with `npm run dev` directly, `DYNAMIC_CONFIG_PATH` is read by the app process as-is.
 
+### Optional login
+
+You can enable username/password login using environment variables:
+
+```bash
+AUTH_USERNAME=admin
+AUTH_PASSWORD=supersecret
+```
+
+Behavior:
+
+- If both are set: login required.
+- If either is missing: no login required.
+
 ## What it supports
 
 - Visual editors for dynamic Traefik sections:
@@ -49,6 +63,8 @@ Create `.env` from `.env.example` and set:
 
 ```bash
 DYNAMIC_CONFIG_PATH=/absolute/path/to/dynamic.yml
+AUTH_USERNAME=admin
+AUTH_PASSWORD=supersecret
 ```
 
 Compose uses that env var for both:
@@ -60,6 +76,7 @@ Example:
 
 - `.env`: `DYNAMIC_CONFIG_PATH=/home/zeeshan/self-hosted/traefik-stack/config/dynamic-bak.yml`
 - Container reads: `/data/dynamic.yml`
+- Auth is enabled only when both `AUTH_USERNAME` and `AUTH_PASSWORD` are non-empty.
 
 ## Doc basis
 

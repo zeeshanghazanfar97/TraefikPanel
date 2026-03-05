@@ -1,6 +1,9 @@
 import { promises as fs } from "node:fs";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TraefikEditor } from "@/components/editor/traefik-editor";
+import { AUTH_SESSION_COOKIE, isAuthEnabled, isValidSessionToken } from "@/lib/auth";
 import { ensureConfigShape, parseDynamicYaml } from "@/lib/traefik";
 import { getResolvedDynamicConfigPath } from "@/lib/config-path";
 
@@ -17,6 +20,12 @@ async function readInitialConfig(configPath: string) {
 }
 
 export default async function HomePage() {
+  const authEnabled = isAuthEnabled();
+  const token = cookies().get(AUTH_SESSION_COOKIE)?.value;
+  if (authEnabled && !isValidSessionToken(token)) {
+    redirect("/login");
+  }
+
   const configPath = getResolvedDynamicConfigPath();
   const initialLoad = configPath
     ? await readInitialConfig(configPath)
@@ -56,7 +65,7 @@ export default async function HomePage() {
           </section>
         ) : null}
         {configPath ? (
-          <TraefikEditor initialConfig={initialLoad.config} configPath={configPath} />
+          <TraefikEditor initialConfig={initialLoad.config} configPath={configPath} authEnabled={authEnabled} />
         ) : (
           <section className="mx-auto max-w-7xl px-4 md:px-8">
             <div className="rounded-lg border bg-card/85 p-6 backdrop-blur">

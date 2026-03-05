@@ -10,6 +10,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - DYNAMIC_CONFIG_PATH=/data/dynamic.yml
+      - AUTH_USERNAME=${AUTH_USERNAME-}
+      - AUTH_PASSWORD=${AUTH_PASSWORD-}
     networks:
       - traefik-public
     labels:
@@ -17,7 +19,6 @@ services:
       - "traefik.http.routers.traefikpanel.rule=Host(`traefikpanel.zeeit.dev`)"
       - "traefik.http.routers.traefikpanel.entrypoints=websecure"
       - "traefik.http.routers.traefikpanel.tls.certresolver=cloudflare"
-      - "traefik.http.routers.traefikpanel.middlewares=authentik@file"
       - "traefik.http.services.traefikpanel.loadbalancer.server.port=3000"
     volumes:
       - ${DYNAMIC_CONFIG_PATH:?DYNAMIC_CONFIG_PATH must be set in .env}:/data/dynamic.yml

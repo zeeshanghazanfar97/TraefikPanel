@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Download, RefreshCw, Save } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, LogOut, RefreshCw, Save } from "lucide-react";
 import {
   ensureConfigShape,
   getArrayAtPath,
@@ -50,9 +50,10 @@ function countEntries(config: TraefikDynamicConfig) {
 type TraefikEditorProps = {
   initialConfig: TraefikDynamicConfig;
   configPath: string;
+  authEnabled: boolean;
 };
 
-export function TraefikEditor({ initialConfig, configPath }: TraefikEditorProps) {
+export function TraefikEditor({ initialConfig, configPath, authEnabled }: TraefikEditorProps) {
   const [config, setConfig] = useState<TraefikDynamicConfig>(() => ensureConfigShape(initialConfig));
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [message, setMessage] = useState<string>("");
@@ -161,6 +162,14 @@ export function TraefikEditor({ initialConfig, configPath }: TraefikEditorProps)
     }
   };
 
+  const logout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      window.location.href = "/login";
+    }
+  };
+
   return (
     <div className="mx-auto max-w-7xl p-4 md:p-8">
       <div className="mb-6 grid gap-4 md:grid-cols-3">
@@ -194,6 +203,11 @@ export function TraefikEditor({ initialConfig, configPath }: TraefikEditorProps)
             <Button variant="secondary" onClick={downloadYaml}>
               <Download className="mr-2 h-4 w-4" /> Download
             </Button>
+            {authEnabled ? (
+              <Button variant="outline" onClick={logout}>
+                <LogOut className="mr-2 h-4 w-4" /> Logout
+              </Button>
+            ) : null}
           </CardContent>
         </Card>
       </div>
