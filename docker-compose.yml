@@ -6,12 +6,21 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: traefik-panel
-    ports:
-      - "3000:3000"
+    # ports:
+    #   - "3000:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - DYNAMIC_CONFIG_PATH=/data/dynamic.yml
+      - DYNAMIC_CONFIG_PATH=${DYNAMIC_CONFIG_PATH:-./dynamic.yml}
+    networks:
+      - traefik-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefikpanel.rule=Host(`traefikpanel.zeeit.dev`)"
+      - "traefik.http.routers.traefikpanel.entrypoints=websecure"
+      - "traefik.http.routers.traefikpanel.tls.certresolver=cloudflare"
+      # - "traefik.http.routers.traefikpanel.middlewares=authentik@file"
+      - "traefik.http.services.traefikpanel.loadbalancer.server.port=3000"
     volumes:
-      - ./dynamic.yml:/data/dynamic.yml
+      - ${DYNAMIC_CONFIG_PATH:-./dynamic.yml}:/data/dynamic.yml
     restart: unless-stopped
