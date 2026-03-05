@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  traefik-panel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: traefik-panel
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DYNAMIC_CONFIG_PATH=/data/dynamic.yml
+    volumes:
+      - ./dynamic.yml:/data/dynamic.yml
+    restart: unless-stopped

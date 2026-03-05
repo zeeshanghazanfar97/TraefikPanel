@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 34 43% 96%;
+  --foreground: 218 37% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 218 37% 14%;
+  --border: 215 24% 85%;
+  --input: 215 24% 85%;
+  --ring: 18 89% 57%;
+  --primary: 18 89% 57%;
+  --primary-foreground: 30 100% 98%;
+  --secondary: 190 68% 88%;
+  --secondary-foreground: 210 30% 20%;
+  --muted: 34 38% 93%;
+  --muted-foreground: 215 20% 36%;
+  --accent: 188 80% 42%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 220 27% 9%;
+  --foreground: 34 32% 96%;
+  --card: 220 22% 12%;
+  --card-foreground: 34 32% 96%;
+  --border: 220 14% 24%;
+  --input: 220 14% 24%;
+  --ring: 190 90% 53%;
+  --primary: 190 90% 53%;
+  --primary-foreground: 222 40% 8%;
+  --secondary: 222 22% 18%;
+  --secondary-foreground: 34 32% 96%;
+  --muted: 220 18% 16%;
+  --muted-foreground: 220 10% 74%;
+  --accent: 16 95% 61%;
+  --accent-foreground: 30 100% 98%;
+  --destructive: 0 72% 52%;
+  --destructive-foreground: 0 0% 100%;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  color: hsl(var(--foreground));
+  background:
+    radial-gradient(1100px 420px at 12% -2%, rgba(249, 115, 22, 0.22), transparent 70%),
+    radial-gradient(1000px 380px at 94% 102%, rgba(8, 145, 178, 0.18), transparent 68%),
+    hsl(var(--background));
+}
+
+.dark body {
+  background:
+    radial-gradient(1000px 420px at 15% -6%, rgba(6, 182, 212, 0.2), transparent 70%),
+    radial-gradient(920px 360px at 95% 106%, rgba(249, 115, 22, 0.16), transparent 72%),
+    hsl(var(--background));
+}
+
+pre,
+code,
+textarea {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+}

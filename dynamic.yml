@@ -1,0 +1,392 @@
+http:
+  routers:
+    mac-6666:
+      rule: Host(`mac-6666.izeeshan.dev`)
+      service: mac-6666-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    dev-8080:
+      rule: Host(`dev-8080.zeeit.dev`)
+      service: dev-8080-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    proxmox:
+      rule: Host(`proxmox.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: proxmox-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    sip-phone-1:
+      rule: Host(`sip-phone-1.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: sip-phone-1-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    nextcloud:
+      rule: Host(`cloud.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: nextcloud-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    truenas:
+      rule: Host(`nas.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: truenas-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    opnsense:
+      rule: Host(`opnsense.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: opnsense-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    sentry:
+      rule: Host(`sentry.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: sentry-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    msfsglass:
+      rule: Host(`msfs.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: msfsglass-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    st-router:
+      rule: Host(`st-router.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: st-router-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    supervisor:
+      rule: Host(`tasks.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: supervisor-service
+      middlewares:
+        - authentik@file
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    rag-chatbot:
+      rule: Host(`rag-chatbot-550e8400-41d4-446655440000.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: rag-chatbot-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    rag-chatbot-v2:
+      rule: Host(`rag-chatbot-v2-550e8400-41d4-446655440000.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: rag-chatbot-v2-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    marte-chatbot:
+      rule: Host(`marte-football.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: marte-football-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    randi-dash:
+      rule: Host(`randi-dash.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: randi-dash-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    twilio-dev-phone:
+      rule: Host(`dev-phone.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: twilio-dev-phone-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    mi-router:
+      rule: Host(`mi-router.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: mi-router-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    bolt-diy:
+      rule: Host(`bolt-demo.izeeshan.dev`)
+      entryPoints:
+        - websecure
+      service: bolt-diy-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    mcp-file-server:
+      rule: Host(`mcp-file-server.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: mcp-file-server-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    homeassistant:
+      rule: Host(`home.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: homeassistant-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    openclaw:
+      rule: Host(`openclaw.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: openclaw-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    softphone:
+      rule: Host(`softphone.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: softphone-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+    huly-workspace:
+      rule: Host(`workspace.zeeit.dev`)
+      entryPoints:
+        - websecure
+      service: huly-workspace-service
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: '*.izeeshan.dev'
+          - main: '*.zeeit.dev'
+  services:
+    mac-6666-service:
+      loadBalancer:
+        servers:
+          - url: http://10.1.1.2:6666
+    dev-8080-service:
+      loadBalancer:
+        servers:
+          - url: http://10.2.1.5:8080
+    proxmox-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: https://192.168.1.100:8006
+    sip-phone-1-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: https://10.1.1.5
+    nextcloud-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: https://10.1.1.101
+    truenas-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: https://10.1.1.104
+    opnsense-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: https://10.1.1.1
+    sentry-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.105:9000
+    msfsglass-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.3:4000
+    st-router-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://192.168.1.1:8090
+    rag-chatbot-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:6666
+    rag-chatbot-v2-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:6667
+    marte-football-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:8145
+    randi-dash-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:8765
+    twilio-dev-phone-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.2:1337
+    supervisor-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:9001
+    mi-router-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: https://10.1.1.200
+    bolt-diy-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:6995
+    mcp-file-server-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:8550
+    homeassistant-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.73:8123
+    openclaw-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.102:18789
+    softphone-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.159:5000
+    huly-workspace-service:
+      loadBalancer:
+        serversTransport: insecureTransport
+        servers:
+          - url: http://10.1.1.103:6796
+  middlewares:
+    geoblock:
+      plugin:
+        traefik-plugin-geoblock:
+          enabled: false
+          allowLocalRequests: true
+          allowUnknownCountries: true
+          api: https://get.geojs.io/v1/ip/country/{ip}
+          apiTimeoutMs: 150
+          cacheSize: 15
+          databaseFilePath: /path/to/IP2LOCATION-LITE-DB1.IPV6.BIN
+          allowedCountries:
+            - PK
+          defaultAllow: false
+          allowPrivate: true
+          disallowedStatusCode: 403
+    authentik:
+      forwardAuth:
+        address: http://authentik_server:9000/outpost.goauthentik.io/auth/traefik
+        trustForwardHeader: true
+        authResponseHeaders:
+          - X-authentik-username
+          - X-authentik-groups
+          - X-authentik-entitlements
+          - X-authentik-email
+          - X-authentik-name
+          - X-authentik-uid
+          - X-authentik-jwt
+          - X-authentik-meta-jwks
+          - X-authentik-meta-outpost
+          - X-authentik-meta-provider
+          - X-authentik-meta-app
+          - X-authentik-meta-version
+  serversTransports:
+    insecureTransport:
+      insecureSkipVerify: true
+tcp:
+  routers: {}
+  services: {}
+  middlewares: {}
+  serversTransports: {}
+udp:
+  routers: {}
+  services: {}
+tls:
+  certificates: []
+  options: {}
+  stores: {}
