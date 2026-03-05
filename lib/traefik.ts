@@ -47,34 +47,31 @@ export function toDynamicYaml(config: TraefikDynamicConfig): string {
 }
 
 export function ensureConfigShape(config: TraefikDynamicConfig): TraefikDynamicConfig {
-  return {
-    ...config,
-    http: {
-      routers: {},
-      services: {},
-      middlewares: {},
-      serversTransports: {},
-      ...(config.http ?? {})
-    },
-    tcp: {
-      routers: {},
-      services: {},
-      middlewares: {},
-      serversTransports: {},
-      ...(config.tcp ?? {})
-    },
-    udp: {
-      routers: {},
-      services: {},
-      ...(config.udp ?? {})
-    },
-    tls: {
-      certificates: [],
-      options: {},
-      stores: {},
-      ...(config.tls ?? {})
+  const next = structuredClone(config) as TraefikDynamicConfig;
+  const root = next as Record<string, unknown>;
+
+  // Safety migration: if a malformed file has HTTP keys at root,
+  // move them under `http` so save operations don't keep breaking Traefik.
+  const httpSection = isRecord(root.http) ? (root.http as Record<string, unknown>) : undefined;
+  let resolvedHttp = httpSection;
+  const httpKeys = ["routers", "services", "middlewares", "serversTransports"] as const;
+
+  for (const key of httpKeys) {
+    if (!isRecord(root[key])) continue;
+    if (!resolvedHttp) {
+      resolvedHttp = {};
     }
-  };
+    if (!isRecord(resolvedHttp[key])) {
+      resolvedHttp[key] = root[key];
+    }
+    delete root[key];
+  }
+
+  if (resolvedHttp && resolvedHttp !== root.http) {
+    root.http = resolvedHttp;
+  }
+
+  return next;
 }
 
 export function getMapAtPath(config: TraefikDynamicConfig, path: readonly string[]): NamedRecord {
@@ -139,4 +136,8 @@ function setAtPath(
 
   cursor[path[path.length - 1]] = value;
   return next;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
