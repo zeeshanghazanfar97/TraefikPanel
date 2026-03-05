@@ -55,112 +55,206 @@ function countEntries(config: TraefikDynamicConfig) {
   }, 0);
 }
 
-const MAX_RENDERED_DIFF_LINES = 600;
+const MAX_DETAILS_PER_ITEM = 8;
+const MAX_MODAL_CHANGES = 250;
 
-type SaveDiffPreview = {
-  text: string;
+type ChangeType = "added" | "removed" | "edited";
+
+type SaveChangeItem = {
+  type: ChangeType;
+  section: string;
+  name: string;
+  details: string[];
+};
+
+type SaveChangeOverview = {
   additions: number;
   removals: number;
+  edits: number;
   changed: boolean;
   truncated: boolean;
+  items: SaveChangeItem[];
 };
 
-type DiffEntry = {
-  type: "add" | "remove";
-  line: string;
-  oldLine?: number;
-  newLine?: number;
-};
+const MAP_COMPARE_SECTIONS = [
+  { path: ["http", "routers"] as const, label: "HTTP Router" },
+  { path: ["http", "services"] as const, label: "HTTP Service" },
+  { path: ["http", "middlewares"] as const, label: "HTTP Middleware" },
+  { path: ["http", "serversTransports"] as const, label: "HTTP ServersTransport" },
+  { path: ["tcp", "routers"] as const, label: "TCP Router" },
+  { path: ["tcp", "services"] as const, label: "TCP Service" },
+  { path: ["tcp", "middlewares"] as const, label: "TCP Middleware" },
+  { path: ["tcp", "serversTransports"] as const, label: "TCP ServersTransport" },
+  { path: ["udp", "routers"] as const, label: "UDP Router" },
+  { path: ["udp", "services"] as const, label: "UDP Service" },
+  { path: ["tls", "options"] as const, label: "TLS Option Set" },
+  { path: ["tls", "stores"] as const, label: "TLS Store" }
+];
 
-function splitYamlLines(input: string): string[] {
-  const normalized = input.replace(/\r\n/g, "\n");
-  if (!normalized) {
-    return [];
-  }
-  return normalized.endsWith("\n") ? normalized.slice(0, -1).split("\n") : normalized.split("\n");
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function computeLineDiff(before: string[], after: string[]): DiffEntry[] {
-  const n = before.length;
-  const m = after.length;
-  const dp: number[][] = Array.from({ length: n + 1 }, () => Array<number>(m + 1).fill(0));
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (isRecord(a) && isRecord(b)) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (!deepEqual(a[key], b[key])) return false;
+    }
+    return true;
+  }
+  return false;
+}
 
-  for (let i = n - 1; i >= 0; i -= 1) {
-    for (let j = m - 1; j >= 0; j -= 1) {
-      if (before[i] === after[j]) {
-        dp[i][j] = dp[i + 1][j + 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+function collectFieldDetails(before: unknown, after: unknown, prefix = ""): string[] {
+  const details: string[] = [];
+
+  const walk = (left: unknown, right: unknown, path: string) => {
+    if (details.length >= MAX_DETAILS_PER_ITEM) return;
+    if (deepEqual(left, right)) return;
+
+    if (Array.isArray(left) && Array.isArray(right)) {
+      if (left.length !== right.length) {
+        details.push(`${path || "value"} length ${left.length} -> ${right.length}`);
+      }
+      const max = Math.max(left.length, right.length);
+      for (let i = 0; i < max && details.length < MAX_DETAILS_PER_ITEM; i += 1) {
+        const nextPath = `${path}[${i}]`;
+        if (i >= left.length) {
+          details.push(`${nextPath} added`);
+        } else if (i >= right.length) {
+          details.push(`${nextPath} removed`);
+        } else if (!deepEqual(left[i], right[i])) {
+          walk(left[i], right[i], nextPath);
+        }
+      }
+      return;
+    }
+
+    if (isRecord(left) && isRecord(right)) {
+      const keys = Array.from(new Set([...Object.keys(left), ...Object.keys(right)])).sort();
+      for (const key of keys) {
+        if (details.length >= MAX_DETAILS_PER_ITEM) break;
+        const nextPath = path ? `${path}.${key}` : key;
+        if (!Object.prototype.hasOwnProperty.call(left, key)) {
+          details.push(`${nextPath} added`);
+        } else if (!Object.prototype.hasOwnProperty.call(right, key)) {
+          details.push(`${nextPath} removed`);
+        } else {
+          walk(left[key], right[key], nextPath);
+        }
+      }
+      return;
+    }
+
+    details.push(`${path || "value"} changed`);
+  };
+
+  walk(before, after, prefix);
+  return details;
+}
+
+function buildSaveChangeOverview(beforeConfig: TraefikDynamicConfig, afterConfig: TraefikDynamicConfig): SaveChangeOverview {
+  const items: SaveChangeItem[] = [];
+
+  for (const section of MAP_COMPARE_SECTIONS) {
+    const beforeMap = getMapAtPath(beforeConfig, section.path);
+    const afterMap = getMapAtPath(afterConfig, section.path);
+    const beforeKeys = Object.keys(beforeMap).sort();
+    const afterKeys = Object.keys(afterMap).sort();
+
+    for (const key of afterKeys) {
+      if (!beforeMap[key]) {
+        items.push({
+          type: "added",
+          section: section.label,
+          name: key,
+          details: collectFieldDetails({}, afterMap[key], "").slice(0, 3)
+        });
+      }
+    }
+
+    for (const key of beforeKeys) {
+      if (!afterMap[key]) {
+        items.push({
+          type: "removed",
+          section: section.label,
+          name: key,
+          details: []
+        });
+      }
+    }
+
+    for (const key of afterKeys) {
+      if (!beforeMap[key] || !afterMap[key]) continue;
+      if (!deepEqual(beforeMap[key], afterMap[key])) {
+        const details = collectFieldDetails(beforeMap[key], afterMap[key]);
+        items.push({
+          type: "edited",
+          section: section.label,
+          name: key,
+          details
+        });
       }
     }
   }
 
-  const entries: DiffEntry[] = [];
-  let i = 0;
-  let j = 0;
-
-  while (i < n && j < m) {
-    if (before[i] === after[j]) {
-      i += 1;
-      j += 1;
+  const beforeTlsCerts = getArrayAtPath(beforeConfig, ["tls", "certificates"]);
+  const afterTlsCerts = getArrayAtPath(afterConfig, ["tls", "certificates"]);
+  const maxTls = Math.max(beforeTlsCerts.length, afterTlsCerts.length);
+  for (let i = 0; i < maxTls; i += 1) {
+    const label = `Certificate #${i + 1}`;
+    if (i >= beforeTlsCerts.length) {
+      items.push({
+        type: "added",
+        section: "TLS Certificate",
+        name: label,
+        details: collectFieldDetails({}, afterTlsCerts[i], "").slice(0, 3)
+      });
       continue;
     }
-
-    if (dp[i + 1][j] >= dp[i][j + 1]) {
-      entries.push({ type: "remove", line: before[i], oldLine: i + 1 });
-      i += 1;
-    } else {
-      entries.push({ type: "add", line: after[j], newLine: j + 1 });
-      j += 1;
+    if (i >= afterTlsCerts.length) {
+      items.push({
+        type: "removed",
+        section: "TLS Certificate",
+        name: label,
+        details: []
+      });
+      continue;
+    }
+    if (!deepEqual(beforeTlsCerts[i], afterTlsCerts[i])) {
+      items.push({
+        type: "edited",
+        section: "TLS Certificate",
+        name: label,
+        details: collectFieldDetails(beforeTlsCerts[i], afterTlsCerts[i])
+      });
     }
   }
 
-  while (i < n) {
-    entries.push({ type: "remove", line: before[i], oldLine: i + 1 });
-    i += 1;
-  }
-
-  while (j < m) {
-    entries.push({ type: "add", line: after[j], newLine: j + 1 });
-    j += 1;
-  }
-
-  return entries;
-}
-
-function buildSaveDiffPreview(currentContent: string, nextContent: string): SaveDiffPreview {
-  if (currentContent === nextContent) {
-    return {
-      text: "No textual changes detected. Save will keep the file unchanged.",
-      additions: 0,
-      removals: 0,
-      changed: false,
-      truncated: false
-    };
-  }
-
-  const diffEntries = computeLineDiff(splitYamlLines(currentContent), splitYamlLines(nextContent));
-  const additions = diffEntries.filter((entry) => entry.type === "add").length;
-  const removals = diffEntries.length - additions;
-
-  const rendered = diffEntries.slice(0, MAX_RENDERED_DIFF_LINES).map((entry) => {
-    if (entry.type === "add") {
-      return `+ [new ${entry.newLine}] ${entry.line}`;
-    }
-    return `- [old ${entry.oldLine}] ${entry.line}`;
-  });
-
-  const truncated = diffEntries.length > MAX_RENDERED_DIFF_LINES;
-  if (truncated) {
-    rendered.push(`... ${diffEntries.length - MAX_RENDERED_DIFF_LINES} more changed line(s) not shown`);
-  }
+  const additions = items.filter((item) => item.type === "added").length;
+  const removals = items.filter((item) => item.type === "removed").length;
+  const edits = items.filter((item) => item.type === "edited").length;
+  const truncated = items.length > MAX_MODAL_CHANGES;
 
   return {
-    text: rendered.join("\n"),
     additions,
     removals,
-    changed: true,
-    truncated
+    edits,
+    changed: items.length > 0,
+    truncated,
+    items: truncated ? items.slice(0, MAX_MODAL_CHANGES) : items
   };
 }
 
@@ -179,12 +273,13 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
   const [rawError, setRawError] = useState("");
   const [isPreparingSave, setIsPreparingSave] = useState(false);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
-  const [saveDiffPreview, setSaveDiffPreview] = useState<SaveDiffPreview>({
-    text: "No textual changes detected.",
+  const [saveChangeOverview, setSaveChangeOverview] = useState<SaveChangeOverview>({
     additions: 0,
     removals: 0,
+    edits: 0,
     changed: false,
-    truncated: false
+    truncated: false,
+    items: []
   });
 
   const yamlText = useMemo(() => toDynamicYaml(config), [config]);
@@ -251,8 +346,9 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
 
     try {
       const data = await fetchLatestConfigContent();
-      const diffPreview = buildSaveDiffPreview(data.content ?? "", yamlText);
-      setSaveDiffPreview(diffPreview);
+      const currentConfig = ensureConfigShape(parseDynamicYaml(data.content ?? ""));
+      const overview = buildSaveChangeOverview(currentConfig, config);
+      setSaveChangeOverview(overview);
       setIsConfirmDialogOpen(true);
     } catch (error) {
       setSaveState("error");
@@ -384,22 +480,41 @@ export function TraefikEditor({ initialConfig, configPath, authEnabled }: Traefi
         <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>Confirm Save</DialogTitle>
-            <DialogDescription>Review these changes before writing to disk.</DialogDescription>
+            <DialogDescription>Review this overview before writing changes to disk.</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">+{saveDiffPreview.additions} additions</Badge>
-            <Badge variant="outline">-{saveDiffPreview.removals} removals</Badge>
-            {saveDiffPreview.changed ? null : <Badge variant="secondary">No changes</Badge>}
+            <Badge variant="secondary">Added: {saveChangeOverview.additions}</Badge>
+            <Badge variant="outline">Removed: {saveChangeOverview.removals}</Badge>
+            <Badge variant="secondary">Edited: {saveChangeOverview.edits}</Badge>
+            {saveChangeOverview.changed ? null : <Badge variant="secondary">No changes</Badge>}
           </div>
 
           <ScrollArea className="h-[420px] rounded-md border bg-muted/40 p-3">
-            <pre className="text-xs leading-5 text-foreground">{saveDiffPreview.text}</pre>
+            <div className="space-y-2 text-sm">
+              {saveChangeOverview.items.length === 0 ? (
+                <p className="text-muted-foreground">No config changes detected.</p>
+              ) : (
+                saveChangeOverview.items.map((item, index) => (
+                  <div key={`${item.type}-${item.section}-${item.name}-${index}`} className="rounded-md border bg-card/80 p-3">
+                    <p className="font-medium">
+                      {item.type === "added" ? "Add" : item.type === "removed" ? "Remove" : "Edit"} {item.section}:{" "}
+                      <span className="font-semibold">{item.name}</span>
+                    </p>
+                    {item.details.length > 0 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">{item.details.join(" • ")}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-muted-foreground">No field-level details.</p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
           </ScrollArea>
 
-          {saveDiffPreview.truncated ? (
+          {saveChangeOverview.truncated ? (
             <p className="text-xs text-muted-foreground">
-              Preview is truncated for readability. Full YAML will still be saved.
+              Change list is truncated for readability.
             </p>
           ) : null}
 
