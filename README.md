@@ -22,6 +22,8 @@ export DYNAMIC_CONFIG_PATH=/data/traefik/dynamic.yml
 
 If it is missing, the web UI shows a simple message and disables the editor.
 
+If you run with `npm run dev` directly, `DYNAMIC_CONFIG_PATH` is read by the app process as-is.
+
 ## What it supports
 
 - Visual editors for dynamic Traefik sections:
@@ -50,10 +52,14 @@ DYNAMIC_CONFIG_PATH=/absolute/path/to/dynamic.yml
 ```
 
 Compose uses that env var for both:
-- Container env `DYNAMIC_CONFIG_PATH`
-- Bind mount source and destination path
+- Host bind mount source
 
-So use an absolute path that exists on your host.
+Inside container, app path is fixed to `/data/dynamic.yml`.
+
+Example:
+
+- `.env`: `DYNAMIC_CONFIG_PATH=/home/zeeshan/self-hosted/traefik-stack/config/dynamic-bak.yml`
+- Container reads: `/data/dynamic.yml`
 
 ## Doc basis
 

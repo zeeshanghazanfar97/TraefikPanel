@@ -47,6 +47,9 @@ export default async function HomePage() {
                 Path: <code>{configPath}</code>
               </p>
               <p className="mt-1 text-xs text-destructive">{initialLoad.error}</p>
+              <p className="mt-1 text-xs text-destructive">
+                If running in Docker, verify the host file is bind-mounted to container path `/data/dynamic.yml`.
+              </p>
             </div>
           </section>
         ) : null}
