@@ -84,7 +84,18 @@ export function TraefikEditor({ initialConfig, configPath }: TraefikEditorProps)
     setRawError("");
     try {
       const response = await fetch("/api/config", { method: "GET" });
-      if (!response.ok) throw new Error("Failed to load dynamic.yml");
+      if (!response.ok) {
+        let errorMessage = "Failed to load dynamic config file.";
+        try {
+          const body = (await response.json()) as { error?: string };
+          if (body.error) {
+            errorMessage = body.error;
+          }
+        } catch {
+          // Keep fallback message.
+        }
+        throw new Error(errorMessage);
+      }
 
       const data = (await response.json()) as { content: string; path: string };
       const parsed = data.content?.trim().length ? parseDynamicYaml(data.content) : {};

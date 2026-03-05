@@ -1,7 +1,17 @@
+import os from "node:os";
 import path from "node:path";
 
 export function getDynamicConfigPathSetting(): string | null {
-  const trimmed = process.env.DYNAMIC_CONFIG_PATH?.trim();
+  let trimmed = process.env.DYNAMIC_CONFIG_PATH?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
   if (!trimmed) {
     return null;
   }
@@ -9,6 +19,12 @@ export function getDynamicConfigPathSetting(): string | null {
 }
 
 export function resolveDynamicConfigPath(configuredPath: string): string {
+  if (configuredPath === "~") {
+    return os.homedir();
+  }
+  if (configuredPath.startsWith("~/")) {
+    return path.join(os.homedir(), configuredPath.slice(2));
+  }
   if (path.isAbsolute(configuredPath)) {
     return configuredPath;
   }

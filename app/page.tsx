@@ -7,15 +7,18 @@ import { getResolvedDynamicConfigPath } from "@/lib/config-path";
 async function readInitialConfig(configPath: string) {
   try {
     const raw = await fs.readFile(configPath, "utf8");
-    return ensureConfigShape(parseDynamicYaml(raw));
-  } catch {
-    return ensureConfigShape({});
+    return { config: ensureConfigShape(parseDynamicYaml(raw)), error: null as string | null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error while reading dynamic config.";
+    return { config: ensureConfigShape({}), error: message };
   }
 }
 
 export default async function HomePage() {
   const configPath = getResolvedDynamicConfigPath();
-  const initialConfig = configPath ? await readInitialConfig(configPath) : ensureConfigShape({});
+  const initialLoad = configPath
+    ? await readInitialConfig(configPath)
+    : { config: ensureConfigShape({}), error: null as string | null };
 
   return (
     <main className="relative min-h-screen overflow-hidden">
@@ -36,8 +39,19 @@ export default async function HomePage() {
             <ThemeToggle />
           </div>
         </section>
+        {configPath && initialLoad.error ? (
+          <section className="mx-auto mb-4 max-w-7xl px-4 md:px-8">
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-4">
+              <p className="text-sm font-semibold text-destructive">Unable to read dynamic config file.</p>
+              <p className="mt-1 break-all text-xs text-destructive">
+                Path: <code>{configPath}</code>
+              </p>
+              <p className="mt-1 text-xs text-destructive">{initialLoad.error}</p>
+            </div>
+          </section>
+        ) : null}
         {configPath ? (
-          <TraefikEditor initialConfig={initialConfig} configPath={configPath} />
+          <TraefikEditor initialConfig={initialLoad.config} configPath={configPath} />
         ) : (
           <section className="mx-auto max-w-7xl px-4 md:px-8">
             <div className="rounded-lg border bg-card/85 p-6 backdrop-blur">
