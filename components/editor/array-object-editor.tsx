@@ -16,6 +16,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 type ArrayObjectEditorProps = {
@@ -155,62 +156,64 @@ export function ArrayObjectEditor({
           rows.map((row) => (
             <div
               key={row.key}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card/70 p-3"
+              className="rounded-lg border bg-card/70 p-3"
             >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold">
-                    {itemLabel} {row.disabled ? "(disabled)" : row.index != null ? `#${row.index + 1}` : ""}
-                  </p>
-                  {row.disabled ? <Badge variant="outline">Disabled</Badge> : <Badge variant="success">Enabled</Badge>}
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0 md:flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold">
+                      {itemLabel} {row.disabled ? "(disabled)" : row.index != null ? `#${row.index + 1}` : ""}
+                    </p>
+                    {row.disabled ? <Badge variant="outline">Disabled</Badge> : <Badge variant="success">Enabled</Badge>}
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{JSON.stringify(row.item)}</p>
                 </div>
-                <p className="truncate text-sm text-muted-foreground">{JSON.stringify(row.item)}</p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    row.disabled && row.id ? openEditDisabled(row.id) : row.index != null ? openEditEnabled(row.index) : null
-                  }
-                >
-                  <Pencil className="mr-1 h-4 w-4" /> Edit
-                </Button>
-                {row.disabled ? (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => (row.id ? onToggleItem({ id: row.id }, true) : null)}
-                    >
-                      Enable
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => (row.id ? onDeleteDisabledItem(row.id) : null)}
-                    >
-                      <Trash2 className="mr-1 h-4 w-4" /> Delete
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => (row.index != null ? onToggleItem({ index: row.index }, false) : null)}
-                    >
-                      Disable
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => (row.index != null ? remove(row.index) : null)}
-                    >
-                      <Trash2 className="mr-1 h-4 w-4" /> Delete
-                    </Button>
-                  </>
-                )}
+                <div className="flex shrink-0 items-center gap-2 md:w-[286px] md:justify-end">
+                  <div className="flex h-9 w-[120px] items-center justify-between rounded-md border px-2">
+                    <span className="text-xs text-muted-foreground">{row.disabled ? "Off" : "On"}</span>
+                    <Switch
+                      checked={!row.disabled}
+                      onCheckedChange={(checked) =>
+                        row.disabled
+                          ? row.id
+                            ? onToggleItem({ id: row.id }, checked)
+                            : null
+                          : row.index != null
+                            ? onToggleItem({ index: row.index }, checked)
+                            : null
+                      }
+                      aria-label={`${row.disabled ? "Enable" : "Disable"} ${itemLabel.toLowerCase()} ${
+                        row.index != null ? `#${row.index + 1}` : ""
+                      }`}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-[78px]"
+                    onClick={() =>
+                      row.disabled && row.id ? openEditDisabled(row.id) : row.index != null ? openEditEnabled(row.index) : null
+                    }
+                  >
+                    <Pencil className="mr-1 h-4 w-4" /> Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-[78px]"
+                    onClick={() =>
+                      row.disabled
+                        ? row.id
+                          ? onDeleteDisabledItem(row.id)
+                          : null
+                        : row.index != null
+                          ? remove(row.index)
+                          : null
+                    }
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" /> Delete
+                  </Button>
+                </div>
               </div>
             </div>
           ))

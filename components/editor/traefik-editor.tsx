@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Download, LogOut, RefreshCw, Save } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Eye, EyeOff, LogOut, RefreshCw, Save } from "lucide-react";
 import {
   createEmptyDisabledCollections,
   extractDisabledCollections,
@@ -346,6 +346,7 @@ export function TraefikEditor({
   const [rawYaml, setRawYaml] = useState<string>("");
   const [rawDirty, setRawDirty] = useState(false);
   const [rawError, setRawError] = useState("");
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isPreparingSave, setIsPreparingSave] = useState(false);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [saveChangeOverview, setSaveChangeOverview] = useState<SaveChangeOverview>({
@@ -627,6 +628,10 @@ export function TraefikEditor({
             <Button variant="secondary" onClick={downloadYaml}>
               <Download className="mr-2 h-4 w-4" /> Download
             </Button>
+            <Button variant="outline" onClick={() => setIsPreviewOpen((current) => !current)}>
+              {isPreviewOpen ? <EyeOff className="mr-2 h-4 w-4" /> : <Eye className="mr-2 h-4 w-4" />}
+              {isPreviewOpen ? "Hide Preview" : "Show Preview"}
+            </Button>
             {authEnabled ? (
               <Button variant="outline" onClick={logout}>
                 <LogOut className="mr-2 h-4 w-4" /> Logout
@@ -719,7 +724,7 @@ export function TraefikEditor({
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className={isPreviewOpen ? "grid gap-6 xl:grid-cols-[1.2fr_0.8fr]" : "grid gap-6"}>
         <Card className="bg-card/85 backdrop-blur">
           <CardHeader>
             <CardTitle>Visual Dynamic Config Editor</CardTitle>
@@ -945,24 +950,26 @@ export function TraefikEditor({
           </CardContent>
         </Card>
 
-        <Card className="bg-card/90">
-          <CardHeader>
-            <CardTitle>Live YAML Preview</CardTitle>
-            <CardDescription>
-              Generated from the current visual state. Saved output is validated before writing.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[70vh] rounded-md border bg-muted/40 p-4">
-              <pre className="text-xs leading-5 text-foreground">{yamlText}</pre>
-            </ScrollArea>
-            <Separator className="my-4" />
-            <p className="text-xs text-muted-foreground">
-              Tip: if Traefik supports a field that does not have dedicated quick inputs yet, edit that object body directly in
-              its YAML dialog.
-            </p>
-          </CardContent>
-        </Card>
+        {isPreviewOpen ? (
+          <Card className="bg-card/90">
+            <CardHeader>
+              <CardTitle>Live YAML Preview</CardTitle>
+              <CardDescription>
+                Generated from the current visual state. Saved output is validated before writing.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[70vh] rounded-md border bg-muted/40 p-4">
+                <pre className="text-xs leading-5 text-foreground">{yamlText}</pre>
+              </ScrollArea>
+              <Separator className="my-4" />
+              <p className="text-xs text-muted-foreground">
+                Tip: if Traefik supports a field that does not have dedicated quick inputs yet, edit that object body directly in
+                its YAML dialog.
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

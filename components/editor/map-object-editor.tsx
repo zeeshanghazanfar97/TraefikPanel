@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
 type MapObjectEditorProps = {
@@ -181,44 +182,46 @@ export function MapObjectEditor({
           rows.map((row) => (
             <div
               key={`${row.disabled ? "disabled" : "enabled"}-${row.entryName}`}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card/70 p-3"
+              className="rounded-lg border bg-card/70 p-3"
             >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{row.entryName}</Badge>
-                  {row.disabled ? <Badge variant="outline">Disabled</Badge> : <Badge variant="success">Enabled</Badge>}
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0 md:flex-1">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="max-w-[24rem] truncate">
+                      {row.entryName}
+                    </Badge>
+                    {row.disabled ? <Badge variant="outline">Disabled</Badge> : <Badge variant="success">Enabled</Badge>}
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">
+                    {summarizeConfig(row.entryName, row.value)}
+                  </p>
                 </div>
-                <p className="truncate text-sm text-muted-foreground">
-                  {summarizeConfig(row.entryName, row.value)}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openEditDialog(row.entryName, row.value, row.disabled)}
-                >
-                  <Pencil className="mr-1 h-4 w-4" /> Edit
-                </Button>
-                {row.disabled ? (
-                  <>
-                    <Button variant="secondary" size="sm" onClick={() => onToggleEntry(row.entryName, true)}>
-                      Enable
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => onDeleteDisabledEntry(row.entryName)}>
-                      <Trash2 className="mr-1 h-4 w-4" /> Delete
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button variant="secondary" size="sm" onClick={() => onToggleEntry(row.entryName, false)}>
-                      Disable
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={() => removeEntry(row.entryName)}>
-                      <Trash2 className="mr-1 h-4 w-4" /> Delete
-                    </Button>
-                  </>
-                )}
+                <div className="flex shrink-0 items-center gap-2 md:w-[286px] md:justify-end">
+                  <div className="flex h-9 w-[120px] items-center justify-between rounded-md border px-2">
+                    <span className="text-xs text-muted-foreground">{row.disabled ? "Off" : "On"}</span>
+                    <Switch
+                      checked={!row.disabled}
+                      onCheckedChange={(checked) => onToggleEntry(row.entryName, checked)}
+                      aria-label={`${row.disabled ? "Enable" : "Disable"} ${itemLabel.toLowerCase()} ${row.entryName}`}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-[78px]"
+                    onClick={() => openEditDialog(row.entryName, row.value, row.disabled)}
+                  >
+                    <Pencil className="mr-1 h-4 w-4" /> Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="w-[78px]"
+                    onClick={() => (row.disabled ? onDeleteDisabledEntry(row.entryName) : removeEntry(row.entryName))}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" /> Delete
+                  </Button>
+                </div>
               </div>
             </div>
           ))
