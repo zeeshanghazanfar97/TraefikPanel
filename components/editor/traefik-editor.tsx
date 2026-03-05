@@ -83,7 +83,10 @@ export function TraefikEditor({ initialConfig, configPath }: TraefikEditorProps)
     setMessage("");
     setRawError("");
     try {
-      const response = await fetch("/api/config", { method: "GET" });
+      const response = await fetch(`/api/config?ts=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store"
+      });
       if (!response.ok) {
         let errorMessage = "Failed to load dynamic config file.";
         try {

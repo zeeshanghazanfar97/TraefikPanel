@@ -4,6 +4,9 @@ import { NextResponse } from "next/server";
 import { getResolvedDynamicConfigPath } from "@/lib/config-path";
 import { parseDynamicYaml } from "@/lib/traefik";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
   const configPath = getResolvedDynamicConfigPath();
   if (!configPath) {
@@ -15,17 +18,23 @@ export async function GET() {
 
   try {
     const content = await fs.readFile(configPath, "utf8");
-    return NextResponse.json({ content, path: configPath });
+    return NextResponse.json(
+      { content, path: configPath },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
+    );
   } catch (error) {
     const code = (error as NodeJS.ErrnoException)?.code;
     const message = error instanceof Error ? error.message : "Unknown error while reading dynamic config file.";
     if (code === "ENOENT") {
       return NextResponse.json(
         { error: `Dynamic config file was not found at ${configPath}.`, path: configPath },
-        { status: 404 }
+        { status: 404, headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
       );
     }
-    return NextResponse.json({ error: message, path: configPath }, { status: 500 });
+    return NextResponse.json(
+      { error: message, path: configPath },
+      { status: 500, headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
+    );
   }
 }
 
